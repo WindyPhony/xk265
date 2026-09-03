@@ -4,7 +4,7 @@
 //		 luyanheng
 //
 //======================================
-module md_fetch(
+module md_fetch(        
 	clk,
 	rstn,
 	enable,
@@ -19,12 +19,12 @@ module md_fetch(
 	input					rstn;
 	input					enable;
 	input		[5:0]		cnt;
-	input       [511:0]     rf_512bit;
+	input       [511:0]     rf_512bit;      // 8x8 pixels
 	output		[23:0]		x1;
 	output		[23:0]		x2;
 	output		[23:0]		x3;
 	
-	reg		[23:0]		x1;
+	reg		[23:0]		x1; //4 pixels
 	reg		[23:0]		x2;
 	reg		[23:0]		x3;
 	

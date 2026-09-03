@@ -1,0 +1,137 @@
+---
+title: IME (Integer Motion Estimation) Module Hierarchy
+---
+graph TB
+    subgraph "External Interfaces"
+        CLK["clk"]
+        RSTN["rstn"]
+        START["ime_start_i"]
+        CMD["cmd_num_i[2:0]<br/>cmd_dat_i"]
+        QP["qp_i[5:0]"]
+        CTU_POS["ctu_x_i, ctu_y_i<br/>ctu_x_all, ctu_y_all<br/>ctu_x_res, ctu_y_res"]
+        CUR_PIX["ime_cur_pel_i[255:0]<br/>32 pixels × 8-bit"]
+        REF_PIX["ime_ref_hor_dat_i[255:0]<br/>32 pixels × 8-bit"]
+        FME_RD["fme_mv_rden_i<br/>fme_mv_rdaddr_i[5:0]"]
+    end
+
+    subgraph "ime_top_buf [rtl/top/ime_top_buf.v:22]"
+        BUF["ime_top_buf"]
+    end
+
+    subgraph "MV Storage"
+        MV_RAM0["ime_mv_ram_sp_64x13<br/>RAM 0<br/>[rtl/mem/]"]
+        MV_RAM1["ime_mv_ram_sp_64x13<br/>RAM 1<br/>[rtl/mem/]"]
+    end
+
+    subgraph "ime_top [rtl/ime/ime_top.v:17]"
+        TOP["ime_top"]
+    end
+
+    subgraph "Control Path"
+        CTRL["ime_ctrl<br/>[rtl/ime/ime_ctrl.v:10]<br/>5-state FSM<br/>IDLE→UPDATE→BUSY_ADR<br/>→BUSY_DEC→BUSY_DMP"]
+    end
+
+    subgraph "Address Generation"
+        ADR["ime_addressing<br/>[rtl/ime/ime_addressing.v:27]<br/>4-state FSM<br/>IDLE→NULL→INIT→BUSY<br/>Zigzag search + MVD cost"]
+    end
+
+    subgraph "Pixel Data Arrays"
+        ORI_DAT["ime_ori_dat_array<br/>ime_dat_array<br/>[auto-generated]<br/>32px → 1024px grid"]
+        REF_DAT["ime_ref_dat_array<br/>ime_dat_array<br/>[auto-generated]<br/>32px → 1024px grid"]
+    end
+
+    subgraph "SAD + Cost Computation"
+        SAD["ime_sad_array<br/>[auto-generated]<br/>Hierarchical SAD<br/>4×4 → 32×32"]
+        COST["ime_cost_store<br/>[auto-generated]<br/>Compare + Store<br/>Best MV + Cost<br/>per partition"]
+    end
+
+    subgraph "Decision + Output"
+        DEC["ime_partition_decision<br/>[auto-generated]<br/>21-cycle FSM<br/>4 partition modes"]
+        DEC_ENG["ime_partition_decision_engine<br/>[rtl/ime/ime_partition_decision_engine.v]<br/>Combinational<br/>cost compare + boundary"]
+        DMP["ime_mv_dump<br/>[auto-generated]<br/>64-cycle serial<br/>MV output"]
+        GLUE["ime_glue_logic<br/>[inline in ime_top.v:691]<br/>Hierarchical partition<br/>reorder for FME"]
+    end
+
+    subgraph "Vertical Memory (ifdef IME_HAS_VER_MEM)"
+        TRANSFER["ime_transfer<br/>[rtl/ime/ime_transfer.v:41]<br/>4-state FSM<br/>64×128 → 128×64"]
+        VERMEM["ime_ver_mem<br/>[rtl/ime/ime_ver_mem.v]<br/>Vertical ref memory"]
+    end
+
+    %% Global
+    CLK --> TOP
+    RSTN --> TOP
+    START --> CTRL
+    CMD --> CTRL
+    QP --> ADR
+    CTU_POS --> CTRL
+    CTU_POS --> ADR
+    CUR_PIX --> ORI_DAT
+    REF_PIX --> TRANSFER
+    REF_PIX -->|"direct (no VER_MEM)"| REF_DAT
+
+    %% ime_top_buf connections
+    BUF --> TOP
+    TOP -->|"mv_wr_ena/adr/dat"| MV_RAM0
+    TOP -->|"mv_wr_ena/adr/dat"| MV_RAM1
+    FME_RD --> MV_RAM0
+    FME_RD --> MV_RAM1
+
+    %% Internal: CTRL → ADR → SAD → COST → DEC → DMP
+    CTRL -->|"start_adr_o"| ADR
+    CTRL -->|"start_dec_o"| DEC
+    CTRL -->|"start_dmp_o"| DMP
+
+    ADR -->|"ori_ena/adr_x/adr_y"| ORI_DAT
+    ADR -->|"ref_hor_ena/adr_x/adr_y<br/>ref_ver_ena/adr_x/adr_y"| REF_DAT
+    ADR -->|"val_o, dat_qd, dat_mv,<br/>dat_cst_mvd"| SAD
+
+    %% Vertical memory path (ifdef IME_HAS_VER_MEM)
+    TRANSFER -->|"ref_rd_ena/adr_x/adr_y"| REF_DAT
+    TRANSFER -->|"ref_wr_ena/adr_x/adr_y"| VERMEM
+    VERMEM -->|"ref_ver_dat_o"| REF_DAT
+
+    ORI_DAT -->|"dat_o[1023:0]"| SAD
+    REF_DAT -->|"dat_o[1023:0]"| SAD
+
+    SAD -->|"val + cst_sad<br/>at 04/08/16/32"| COST
+    COST -->|"dat_XX_mv/cst_o"| DEC
+    COST -->|"dat_32_mv_0 (feedback)"| ADR
+
+    DEC -->|"partition[41:0]"| GLUE
+    GLUE -->|"partition_o[41:0]"| DMP
+    DEC -->|"dat_XX_cst_o"| DEC_ENG
+    DEC_ENG -.->|"best_partition,<br/>best_cost"| DEC
+
+    COST -->|"dat_XX_mv_o"| DMP
+    DMP -->|"mv_wr_ena/adr/dat"| TOP
+
+    %% Output
+    TOP -->|"partition_o[41:0]"| GLUE
+    GLUE -->|"prt_o → partition_o"| BUF
+
+    %% Done signals
+    ADR -.->|"done_o"| CTRL
+    DEC -.->|"done_o"| CTRL
+    DMP -.->|"done_o"| CTRL
+    CTRL -.->|"done_o"| TOP
+    TOP -.->|"done_o"| BUF
+    TRANSFER -.->|"done_o"| CTRL
+
+    %% Style
+    classDef wrapperModule fill:#4a90d9,stroke:#2c5f8a,color:#fff,font-weight:bold
+    classDef coreModule fill:#d9534f,stroke:#a94442,color:#fff
+    classDef ctrlModule fill:#e8a838,stroke:#b07d28,color:#000
+    classDef memModule fill:#5cb85c,stroke:#3d8b3d,color:#fff
+    classDef autoModule fill:#9b59b6,stroke:#7d3c98,color:#fff
+    classDef extInterface fill:#f5f5f5,stroke:#999,color:#000
+
+    class BUF wrapperModule
+    class TOP coreModule
+    class CTRL ctrlModule
+    class ADR ctrlModule
+    class ORI_DAT,REF_DAT,SAD,COST,DEC,DMP autoModule
+    class DEC_ENG autoModule
+    class GLUE coreModule
+    class TRANSFER,VERMEM memModule
+    class MV_RAM0,MV_RAM1 memModule
+    class CLK,RSTN,START,CMD,QP,CTU_POS,CUR_PIX,REF_PIX,FME_RD extInterface

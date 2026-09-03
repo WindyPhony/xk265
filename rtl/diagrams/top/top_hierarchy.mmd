@@ -1,0 +1,121 @@
+---
+title: xk265 RTL Top-Level Module Hierarchy
+---
+graph TB
+    subgraph "External Interfaces"
+        CLK["clk"]
+        RSTN["rstn (active-low)"]
+        SYS_IF["sys_cfg_if<br/>start, type, width, height, QP, enables"]
+        RC_IF["rc_cfg_if<br/>bitnum, K, ROI, frame bytes, QP bounds"]
+        IME_CMD["ime_cfg_if<br/>cmd_num, cmd_dat"]
+        EXT_IF["ext_if<br/>start, done, mode, x, y, width, height,<br/>wren, rden, data_i[127:0], data_o[127:0]"]
+        BS_IF["bs_if<br/>bs_val, bs_dat[7:0]"]
+        SKIP_THR["skip_cost_thresh<br/>08, 16, 32, 64 [31:0]"]
+    end
+
+    subgraph "h265enc_top [rtl/top/enc_top.v:32]"
+        TOP["h265enc_top"]
+    end
+
+    subgraph "First-Level Children"
+        CTRL["enc_ctrl<br/>[rtl/top/enc_ctrl.v:34]<br/>Pipeline FSM<br/>12 states: IDLE→S0→…→SA→IDLE"]
+        FETCH["fetch_top<br/>[rtl/fetch/fetch_top.v:23]<br/>Data fetch hub<br/>6 submodules"]
+        CORE["enc_core<br/>[rtl/top/enc_core.v:22]<br/>Encoder datapath<br/>8 submodules"]
+    end
+
+    subgraph "Second-Level: Processing Blocks"
+        PREI["prei_top_buf<br/>[rtl/top/prei_top_buf.v:16]<br/>Pre-intra estimation<br/>+ rate control"]
+        POSI["posi_top_buf<br/>[rtl/top/posi_top_buf.v:22]<br/>SATD cost<br/>partition decision"]
+        IME["ime_top_buf<br/>[rtl/top/ime_top_buf.v:22]<br/>Integer motion<br/>estimation"]
+        FME["fme_top_buf<br/>[rtl/top/fme_top_buf.v:22]<br/>Fractional motion<br/>estimation"]
+        REC["rec_top<br/>[rtl/rec/rec_top.v:23]<br/>Reconstruction<br/>intra+MC+TQ+buf"]
+        DBSAO["dbsao_top<br/>[rtl/db/dbsao_top.v:22]<br/>Deblocking + SAO"]
+        CABAC["cabac_top<br/>[rtl/cabac/cabac_top.v:32]<br/>CABAC entropy<br/>coding"]
+        PIPE["enc_data_pipeline<br/>[rtl/top/enc_data_pipeline.v:11]<br/>QP/part/CBF/skip<br/>pipeline regs"]
+    end
+
+    subgraph "Second-Level: Fetch Submodules"
+        FW["fetch_wrapper<br/>ext_if sequencing"]
+        FCL["fetch_cur_luma<br/>current luma buffer"]
+        FCR["fetch_cur_chroma<br/>current chroma buffer"]
+        FRL["fetch_ref_luma<br/>reference luma buffer"]
+        FRR["fetch_ref_chroma<br/>reference chroma buffer"]
+        FDB["fetch_db<br/>DB rec buffer"]
+    end
+
+    %% Global signals
+    CLK --> TOP
+    RSTN --> TOP
+    SYS_IF --> TOP
+    RC_IF --> TOP
+    IME_CMD --> TOP
+    SKIP_THR --> TOP
+    TOP --> BS_IF
+    TOP --> EXT_IF
+
+    %% First-level instantiation
+    TOP --> CTRL
+    TOP --> FETCH
+    TOP --> CORE
+
+    %% CTRL control signals to/from CORE
+    CTRL -.->|"start/done/x/y<br/>8 subsystems"| CORE
+    CTRL -.->|"load/store ena<br/>+ addresses"| FETCH
+    CORE -.->|"done flags"| CTRL
+
+    %% CORE pixel data to/from FETCH
+    CORE <-->|"prei_cur_if<br/>256b"| FETCH
+    CORE <-->|"posi_cur_if<br/>256b"| FETCH
+    CORE <-->|"ime_cur_if<br/>ime_ref_if<br/>256b"| FETCH
+    CORE <-->|"fme_cur_if<br/>fme_ref_if<br/>512b"| FETCH
+    CORE <-->|"rec_cur_if<br/>rec_ref_if"| FETCH
+    CORE <-->|"db_cur_if<br/>db_rec_if<br/>db_top_rec_if"| FETCH
+
+    %% CORE to EXT_IF (through FETCH)
+    FETCH --> EXT_IF
+
+    %% CORE internal blocks
+    CORE --> PREI
+    CORE --> POSI
+    CORE --> IME
+    CORE --> FME
+    CORE --> REC
+    CORE --> DBSAO
+    CORE --> CABAC
+    CORE --> PIPE
+
+    %% FETCH sub-modules
+    FETCH --> FW
+    FETCH --> FCL
+    FETCH --> FCR
+    FETCH --> FRL
+    FETCH --> FRR
+    FETCH --> FDB
+    FW --> EXT_IF
+
+    %% MV data flow (dashed = internal to enc_core)
+    IME -.->|"partition + MV"| FME
+    FME -.->|"MV"| REC
+    FME -.->|"MV"| DBSAO
+    REC -.->|"pixel reco"| DBSAO
+    DBSAO -.->|"filtered pixel"| FETCH
+    CABAC -.->|"bitstream"| BS_IF
+    PIPE -.->|"delayed QP/part<br/>CBF/skip"| DBSAO
+    PIPE -.->|"delayed QP"| CABAC
+
+    %% Style
+    classDef topModule fill:#4a90d9,stroke:#2c5f8a,color:#fff,font-weight:bold
+    classDef ctrlModule fill:#e8a838,stroke:#b07d28,color:#000
+    classDef fetchModule fill:#5cb85c,stroke:#3d8b3d,color:#fff
+    classDef coreModule fill:#d9534f,stroke:#a94442,color:#fff
+    classDef pipeModule fill:#9b59b6,stroke:#7d3c98,color:#fff
+    classDef extInterface fill:#f5f5f5,stroke:#999,color:#000
+
+    class TOP topModule
+    class CTRL ctrlModule
+    class FETCH fetchModule
+    class CORE coreModule
+    class PREI,POSI,IME,FME REC,DBSAO,CABAC coreModule
+    class PIPE pipeModule
+    class FW,FCL,FCR,FRL,FRR,FDB fetchModule
+    class CLK,RSTN,SYS_IF,RC_IF,IME_CMD,EXT_IF,BS_IF,SKIP_THR extInterface

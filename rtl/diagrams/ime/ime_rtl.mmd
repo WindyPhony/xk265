@@ -1,0 +1,157 @@
+---
+title: IME RTL-Level Block Diagram
+---
+graph TB
+    subgraph EXTERNAL["External Interface"]
+        CLK["clk"]
+        RSTN["rstn"]
+        START["start_i"]
+        CMD_NUM["cmd_num_i[2:0]"]
+        CMD_DAT["cmd_dat_i[223:0]"]
+        QP["qp_i[5:0]"]
+        CTU["ctu_x/y_cur_i<br/>ctu_x/y_all_i<br/>ctu_x/y_res_i"]
+    end
+
+    subgraph BUF["ime_top_buf — Buffer Wrapper [rtl/top/ime_top_buf.v:22]"]
+        PIX_CONV["Pixel Width Converter<br/>8-bit → 4-bit extraction<br/>(bits[7:4])"]
+        MV_RAM0["ime_mv_ram_sp_64x13<br/>RAM 0 (ping-pong)"]
+        MV_RAM1["ime_mv_ram_sp_64x13<br/>RAM 1 (ping-pong)"]
+        FME_OUT["FME MV Output<br/>sign-extended<br/>(ime_top_buf.v:201)"]
+    end
+
+    subgraph TOP["ime_top — Core [rtl/ime/ime_top.v:17]"]
+
+        subgraph CTRL["ime_ctrl [rtl/ime/ime_ctrl.v:10]"]
+            FSM5["5-State FSM<br/>─────────────<br/>IDLE (0)<br/>UPDATE (4)<br/>BUSY_ADR (1)<br/>BUSY_DEC (2)<br/>BUSY_DMP (3)"]
+            CMD_REG["Registers:<br/>cmd_cnt_r[2:0]<br/>partition_r<br/>CMD_DAT_WIDTH_ONE=28"]
+            START_SIGS["Start Pulses:<br/>start_adr_o<br/>start_dec_o<br/>start_dmp_o"]
+        end
+
+        subgraph ADDR["ime_addressing [rtl/ime/ime_addressing.v:27]"]
+            FSM4["4-State FSM<br/>─────────────<br/>IDLE (0)<br/>NULL (1)<br/>INIT (2)<br/>BUSY (3)"]
+            ZIGZAG["Zigzag Scan Gen<br/>cnt_quad_r[1:0]<br/>cnt_search_r<br/>cnt_line_r<br/>4 quadrants<br/>UP/DOWN alternation"]
+            MVDCOST["MVD Cost Calc<br/>lambda × bitsnum<br/>(QP lookup table)<br/>ime_addressing.v:534-611"]
+            FEEDBACK["Feedback Mux<br/>dat_32_mv_0 from<br/>ime_cost_store"]
+            BOUNDARY["Boundary Check<br/>SW_X_WIDTH=192<br/>SW_Y_WIDTH=128<br/>Slope constraint"]
+        end
+
+        subgraph PIXEL["Pixel Data Arrays [auto-generated]"]
+            ORI_DAT["ime_ori_dat_array<br/>[ime_dat_array.v]<br/>32px → 1024px grid<br/>dir=DOWN always"]
+            REF_DAT["ime_ref_dat_array<br/>[ime_dat_array.v]<br/>32px → 1024px grid<br/>dir=mux(transfer/adr)"]
+            REF_VER_MUX["ref_ver_dat_i_w mux<br/>(ime_top.v:358)<br/>tra_busy ? ref_hor<br/>: ver_mem_rd"]
+        end
+
+        subgraph SAD["SAD Computation [auto-generated]"]
+            SAD_TREE["ime_sad_array<br/>[ime_sad_array.v]<br/>─────────────<br/>4×4 → 8×8 → 16×16 → 32×32<br/>Hierarchical SAD tree<br/>Combinational logic"]
+            SAD_OUT["Outputs:<br/>val_04/08/16/32_o<br/>dat_XX_qd[1:0]<br/>dat_XX_mv[12:0]<br/>dat_XX_cst_mvd[12:0]<br/>dat_XX_cst_sad"]
+        end
+
+        subgraph COST["Cost Store [auto-generated]"]
+            COST_CMP["ime_cost_store<br/>[ime_cost_store.v]<br/>─────────────<br/>Min-register pattern:<br/>if(incoming < stored)<br/>&nbsp;&nbsp;update MV + cost"]
+            COST_BEST["Best MV Registers:<br/>str_dat_08_mv_0[12:0]×64<br/>str_dat_16_mv_0[12:0]×16<br/>str_dat_16_mv_1[12:0]×32<br/>str_dat_16_mv_2[12:0]×32<br/>str_dat_32_mv_0[12:0]×4<br/>str_dat_32_mv_1[12:0]×8<br/>str_dat_32_mv_2[12:0]×8<br/>str_dat_64_mv_0[12:0]×1<br/>str_dat_64_mv_1[12:0]×2<br/>str_dat_64_mv_2[12:0]×2"]
+            COST_CST["Best Cost Registers:<br/>str_dat_XX_cst_0/1/2<br/>(parallel set for all partition sizes)"]
+        end
+
+        subgraph DECISION["Partition Decision + Output"]
+            DEC_FSM["ime_partition_decision<br/>[ime_partition_decision.v]<br/>─────────────<br/>2-State FSM: IDLE, BUSY<br/>21-cycle counter (0-20)<br/>dec_partition_o[41:0]"]
+            DEC_ENG["ime_partition_decision_engine<br/>[ime_partition_decision_engine.v]<br/>─────────────<br/>Combinational:<br/>cost_1nx1n = cst_0+cst_1+cst_2+cst_3<br/>cost_2nx1n = cst_0+cst_1<br/>cost_1nx2n = cst_0+cst_1<br/>cost_2nx2n = cst_0<br/>Min-select + boundary clamp"]
+            MV_DMP["ime_mv_dump<br/>[ime_mv_dump.v]<br/>─────────────<br/>2-State FSM: IDLE, BUSY<br/>64-cycle counter (0-63)<br/>Partition-based MV select<br/>Serial output to MV RAM"]
+        end
+
+        subgraph GLUE["ime_glue_logic [inline: ime_top.v:691]"]
+            GLUE_HIER["Hierarchical Partition Inheritance<br/>─────────────<br/>Default: all = IME_PART_2NX2N<br/>64×64→32×32: if 64==1NX1N → inherit<br/>32×32→16×16: if 64==1NX1N && 32==1NX1N → inherit"]
+            GLUE_REG["21 Registers × 2-bit<br/>partition_64_0_0_r<br/>partition_32_{0,1}_{0,1}_r<br/>partition_16_{0..3}_{0..3}_r"]
+            GLUE_REORDER["Reorder for FME<br/>Decision order → FME raster scan order<br/>16×16 → 32×32 → 64×64"]
+        end
+
+        subgraph VERMEM["ifdef IME_HAS_VER_MEM"]
+            TRF["ime_transfer<br/>[ime_transfer.v:41]<br/>─────────────<br/>4-State FSM:<br/>IDLE → PRE → BUSY → POST<br/>Read: 64×128 format<br/>Write: 128×64 format<br/>8 read/write counters"]
+            VMEM["ime_ver_mem<br/>[ime_ver_mem.v]<br/>─────────────<br/>Vertical Reference Memory<br/>rotate on start_i<br/>Wr: from ime_transfer<br/>Rd: to ime_ref_dat_array"]
+        end
+
+        subgraph PIPE["Pipeline Delay Registers (DLY_MEM=2)"]
+            ADR_PIPE["Addressing → SAD<br/>─────────────<br/>ctr_done_adr_i_r[8:0]<br/>ori_val_i_r[1:0]<br/>ref_val_i_r[1:0]<br/>ref_dir_i_r[3:0]<br/>sad_val_i_r[1:0]<br/>sad_dat_qd_i_r[3:0]<br/>sad_dat_mv_i_r[25:0]<br/>sad_dat_cst_mvd_i_r[25:0]"]
+            VER_PIPE["Vertical Memory → ver_mem<br/>─────────────<br/>mem_wr_dir_i_r[3:0]<br/>mem_wr_ena_i_r[1:0]<br/>mem_wr_adr_x_i_r[13:0]<br/>mem_wr_adr_y_i_r[15:0]"]
+        end
+    end
+
+    %% === Control Flow (dashed) ===
+    START -->|"start_i"| CTRL
+    CMD_NUM -->|"cmd_num_i[2:0]"| CTRL
+    CMD_DAT -->|"cmd_dat_i[223:0]"| CTRL
+    QP -->|"qp_i[5:0]"| ADDR
+    CTU -->|"ctu_x/y_cur, ctu_x/y_all"| CTRL
+    CTU -->|"ctu_x/y_cur, ctu_x/y_res"| ADDR
+
+    CTRL -.->|"start_adr_o"| ADDR
+    CTRL -.->|"start_dec_o"| DECISION
+    CTRL -.->|"start_dmp_o"| DECISION
+    ADDR -.->|"done_o"| CTRL
+    DEC_FSM -.->|"done_o"| CTRL
+    MV_DMP -.->|"done_o"| CTRL
+
+    %% === Data Path (solid) ===
+    PIX_CONV -->|"px_ori[127:0]<br/>(4-bit × 32)|" ORI_DAT
+    PIX_CONV -->|"px_ref[127:0]<br/>(4-bit × 32)|" REF_DAT
+
+    ADDR -->|"ori_ena, adr_x[5:0],<br/>adr_y[5:0]"| ORI_DAT
+    ADDR -->|"ref_hor_ena, adr_x[8:0],<br/>adr_y[6:0], ref_dir[1:0]"| REF_DAT
+    ADDR -->|"val_o, dat_qd[1:0],<br/>dat_mv[12:0], dat_cst_mvd[12:0]"| SAD
+
+    ORI_DAT -->|"dat_o[4095:0]<br/>(4-bit × 1024)"| SAD_TREE
+    REF_DAT -->|"dat_o[4095:0]<br/>(4-bit × 1024)"| SAD_TREE
+
+    SAD_TREE --> SAD_OUT
+    SAD_OUT -->|"val + dat_qd + dat_mv<br/>+ dat_cst_mvd + dat_cst_sad<br/>at 04/08/16/32"| COST_CMP
+    COST_CMP --> COST_BEST
+    COST_CMP --> COST_CST
+
+    COST_BEST -->|"feedback:<br/>str_dat_32_mv_0"| FEEDBACK
+    COST_CST -->|"str_dat_XX_cst_0/1/2"| DEC_ENG
+    COST_BEST -->|"str_dat_XX_mv_0/1/2"| MV_DMP
+    DEC_ENG -.->|"best_partition, best_cost"| DEC_FSM
+
+    DEC_FSM -->|"dec_partition_o[41:0]"| GLUE_HIER
+    GLUE_HIER --> GLUE_REG
+    GLUE_REG --> GLUE_REORDER
+    GLUE_REORDER -->|"partition_o[41:0]"| FME_OUT
+
+    MV_DMP -->|"mv_wr_ena, mv_wr_adr[5:0],<br/>mv_wr_dat[12:0]"| MV_RAM0
+    MV_DMP -->|"mv_wr_ena, mv_wr_adr[5:0],<br/>mv_wr_dat[12:0]"| MV_RAM1
+
+    %% === Vertical Memory Path (ifdef IME_HAS_VER_MEM) ===
+    TRF -.->|"done_o"| CTRL
+    TRF -->|"ref_rd_ena, adr_x, adr_y"| REF_DAT
+    TRF -->|"ref_wr_ena, adr_x, adr_y"| VMEM
+    VMEM -->|"mem_rd_dat_o[127:0]"| REF_VER_MUX
+    REF_VER_MUX -->|"ref_ver_dat_i_w[127:0]"| REF_DAT
+
+    %% === Done signal chain ===
+    CTRL -.->|"done_o"| TOP
+    TOP -.->|"done_o"| BUF
+
+    %% === Style ===
+    classDef external fill:#f5f5f5,stroke:#999,color:#000
+    classDef wrapper fill:#4a90d9,stroke:#2c5f8a,color:#fff,font-weight:bold
+    classDef core fill:#d9534f,stroke:#a94442,color:#fff,font-weight:bold
+    classDef ctrlBlock fill:#e8a838,stroke:#b07d28,color:#000,font-weight:bold
+    classDef memBlock fill:#5cb85c,stroke:#3d8b3d,color:#fff,font-weight:bold
+    classDef autoGen fill:#9b59b6,stroke:#7d3c98,color:#fff,font-weight:bold
+    classDef pipeline fill:#34495e,stroke:#2c3e50,color:#fff,font-weight:bold
+    classDef fsm fill:#e8a838,stroke:#b07d28,color:#000
+    classDef register fill:#f39c12,stroke:#d68910,color:#000
+    classDef verMem fill:#27ae60,stroke:#1e8449,color:#fff,font-weight:bold
+    classDef glue fill:#8e44ad,stroke:#6c3483,color:#fff,font-weight:bold
+
+    class CLK,RSTN,START,CMD_NUM,CMD_DAT,QP,CTU external
+    class BUF,PIX_CONV,MV_RAM0,MV_RAM1,FME_OUT wrapper
+    class TOP core
+    class CTRL,FSM5,CMD_REG,START_SIGS ctrlBlock
+    class ADDR,FSM4,ZIGZAG,MVDCOST,FEEDBACK,BOUNDARY ctrlBlock
+    class ORI_DAT,REF_DAT,REF_VER_MUX autoGen
+    class SAD,SAD_TREE,SAD_OUT autoGen
+    class COST,COST_CMP,COST_BEST,COST_CST autoGen
+    class DECISION,DEC_FSM,DEC_ENG,MV_DMP autoGen
+    class GLUE,GLUE_HIER,GLUE_REG,GLUE_REORDER glue
+    class VERMEM,TRF,VMEM verMem
+    class PIPE,ADR_PIPE,VER_PIPE pipeline

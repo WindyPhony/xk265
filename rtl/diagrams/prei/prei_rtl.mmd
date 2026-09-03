@@ -1,0 +1,138 @@
+---
+title: PREI RTL-Level Block Diagram
+---
+graph TB
+    subgraph EXTERNAL["External Interface"]
+        CLK["clk"]
+        RSTN["rstn"]
+        START["prei_start_i"]
+        PIXEL["prei_cur_data_i[255:0]"]
+        RC_IN["actual_bitnum_i[15:0]<br/>rc_ctu_x/y_i"]
+        RC_REG["reg_k, reg_bitnum_i<br/>reg_ROI_*<br/>reg_initial/max/min/delta_qp"]
+        MD_RD_ENA["posi_md_ena_i"]
+        MD_RD_ADDR["posi_md_addr_i[8:0]"]
+        SEL["sel_mod_2_i"]
+    end
+
+    subgraph BUF["prei_top_buf [rtl/top/prei_top_buf.v:16]"]
+        ADDR_REMAP["Address Remap<br/>posi_addr < 84 → addr+1<br/>posi_addr ≥ 84 → 21+(addr-84)/4<br/>(prei_top_buf.v:122-129)"]
+        PING_PONG["Mode RAM Ping-Pong<br/>sel_mod_2_i=0: wr=RAM0, rd=RAM1<br/>sel_mod_2_i=1: wr=RAM1, rd=RAM0"]
+        MRAM0["prei_md_ram_sp_85x6<br/>RAM 0<br/>(rf_2p 16×32, inferred)"]
+        MRAM1["prei_md_ram_sp_85x6<br/>RAM 1<br/>(rf_2p 16×32, inferred)"]
+    end
+
+    subgraph TOP["prei_top [rtl/prei/prei_top.v:13]"]
+
+        subgraph MD["hevc_md_top → md_top — Mode Decision Core"]
+
+            subgraph FETCH["Pixel Fetch"]
+                FETCH8["fetch8x8<br/>[rtl/prei/fetch8x8.v]<br/>─────────────<br/>cnt[5:0]: 0→40<br/>blockcnt[6:0]: 0→64<br/>rf_512bit[511:0] register<br/>2×256-bit read assembly<br/>─────────────<br/>md_ren_o pulse (cnt 0-17)<br/>md_4x4_x/y_o = blockcnt bits<br/>md_size_o=01, md_sel_o=0"]
+                MDFETCH["md_fetch<br/>[rtl/prei/md_fetch.v]<br/>─────────────<br/>cnt==5-40: extract 3 rows<br/>x1[23:0] = row of 4 pixels<br/>x2[23:0]<br/>x3[23:0]<br/>rf_512bit → x1/x2/x3 mux"]
+            end
+
+            subgraph GRADIENT["Gradient + Angular Cost"]
+                GXGY["gxgy<br/>[rtl/prei/gxgy.v]<br/>─────────────<br/>Sobel operators:<br/>gy = x1[0]+2*x1[1]+x1[2]<br/>     -x3[0]-2*x3[1]-x3[2]<br/>gx = x1[0]+2*x2[0]+x3[0]<br/>     -x1[2]-2*x2[2]-x3[2]<br/>Output: gx[10:0], gy[10:0]<br/>(signed)"]
+                COUNTER["counter<br/>[rtl/prei/counter.v]<br/>─────────────<br/>32 angular modes (2-33):<br/>mode_N = cos(N)×gx + sin(N)×gy<br/>Example:<br/>  mode2: 90*gx+90*gy<br/>  mode10: 128*gx<br/>  mode18: 90*gx-90*gy<br/>Output: mode2..mode33[21:0]"]
+            end
+
+            subgraph DECISION["Mode Selection"]
+                COMPARE["compare<br/>[rtl/prei/compare.v]<br/>─────────────<br/>Hierarchical best angle:<br/>8×8: best among 32 angles<br/>16×16: best of 4×8×8<br/>32×32: best of 4×16×16<br/>64×64: best of 4×32×32<br/>─────────────<br/>bestmode[5:0]<br/>modebest[21:0]<br/>bestmode16/32/64[5:0]<br/>modebest16/32/64"]
+                DCPLANAR["dc_planar<br/>[rtl/prei/DC_Plannar.v]<br/>─────────────<br/>Gradient magnitude:<br/>modedata += |gx|+|gy|<br/>Accumulate 8→16→32→64<br/>─────────────<br/>DC thresholds:<br/>  DC8=288, DC16=1152<br/>  DC32=4608, DC64=18432<br/>Planar thresholds:<br/>  Plan8/16/32/64=32<br/>─────────────<br/>Decision:<br/>if modedata<DC → mode1 (DC)<br/>elif modebest>Plan×modedata<br/>  → mode0 (Planar)<br/>else → best angle<br/>─────────────<br/>Output: bestmode_o/16/32/64_o"]
+            end
+
+            subgraph CTRL_LOGIC["Control"]
+                CTRL["control<br/>[rtl/prei/control.v]<br/>─────────────<br/>Implicit FSM:<br/>cyclecnt[5:0]: 0→40<br/>blockcnt[6:0]: 0→64<br/>newblock = (cyclecnt==40)<br/>gxgyrun = (cyclecnt==5<br/>  && blockcnt≠64)<br/>counterrun1 = gxgyrun<br/>counterrun2 = counterrun1<br/>finish = (blockcnt==65<br/>  && cyclecnt==15)"]
+            end
+
+            subgraph WRITEBACK["Mode Write"]
+                MODWRITE["mode_write<br/>[rtl/prei/mode_write.v]<br/>─────────────<br/>cnt==11: 8×8 mode write<br/>  md_waddr = blockcnt+19<br/>  md_wdata = bestmode<br/>cnt==12: 16×16 mode write<br/>  md_waddr = blockcnt[6:2]+4<br/>  md_wdata = bestmode16<br/>cnt==13: 32×32 mode write<br/>  md_waddr = blockcnt[6:4]<br/>  md_wdata = bestmode32<br/>cnt==14: 64×64 mode write<br/>  md_waddr = 0<br/>  md_wdata = bestmode64"]
+            end
+        end
+
+        subgraph RC["rate_control [rtl/prei/rate_control.v:22]"]
+            RC_PIPE["11-Cycle Pipeline<br/>─────────────<br/>cnt==0: rc_run<br/>cnt==1: modebest_1 = modebest64_i + modebest_1<br/>        frame_bit += actual_bitnum_i<br/>cnt==2: predict_bit = modebest_7 × reg_k >> 28<br/>cnt==3: actual_big = (frame_bit > predict_bit)<br/>cnt==4: diff_abs = |frame_bit - predict_bit|<br/>cnt==5: diff_level = 0/1/2 based on L1/L2 thresholds<br/>cnt==6: qp_tmp = initial_qp ± diff_level<br/>cnt==7: ROI_hit = CTU in ROI rectangle<br/>cnt==8: qp_ROI = ROI_hit ? qp_tmp-delta_qp : qp_tmp<br/>cnt==9: rc_qp_o = clamp(qp_ROI, min, max)<br/>cnt==10: rc_done_o"]
+            RC_REG_BANK["modebest_1..7<br/>7-stage shift accumulator<br/>(39-bit each)"]
+        end
+    end
+
+    %% External → BUF
+    START -->|"prei_start_i"| TOP
+    PIXEL -->|"prei_cur_data_i[255:0]"| FETCH8
+    MD_RD_ENA -->|"posi_md_ena_i"| PING_PONG
+    MD_RD_ADDR -->|"posi_md_addr_i[8:0]"| ADDR_REMAP
+    SEL -->|"sel_mod_2_i"| PING_PONG
+
+    %% BUF → TOP
+    PING_PONG -->|"wr_ena, wr_addr,<br/>wr_data"| TOP
+
+    %% Control → all
+    CTRL -->|"gxgyrun"| GXGY
+    CTRL -->|"counterrun1"| COUNTER
+    CTRL -->|"counterrun2"| COUNTER
+    CTRL -.->|"newblock"| MT
+    CTRL -.->|"finish"| TOP
+    CTRL -->|"cyclecnt, blockcnt"| FETCH8
+
+    %% Fetch → Gradient
+    FETCH8 -->|"rf_512bit[511:0]"| MDFETCH
+    MDFETCH -->|"x1[23:0], x2[23:0], x3[23:0]"| GXGY
+
+    %% Gradient → Counter
+    GXGY -->|"gx[10:0], gy[10:0]"| COUNTER
+    GXGY -->|"gx[10:0], gy[10:0]"| DCPLANAR
+
+    %% Counter → Compare
+    COUNTER -->|"mode2..mode33[21:0]"| COMPARE
+
+    %% Compare → DC/Planar
+    COMPARE -->|"bestmode[5:0], modebest[21:0]<br/>bestmode16/32/64, modebest16/32/64"| DCPLANAR
+
+    %% DC/Planar → Mode Write
+    DCPLANAR -->|"bestmode_o/16/32/64_o"| MODWRITE
+    COMPARE -->|"bestmode, modebest,<br/>bestmode16/32/64"| MODWRITE
+
+    %% Mode Write → output
+    MODWRITE -->|"md_we, md_waddr[6:0],<br/>md_wdata[5:0]"| TOP
+
+    %% hevc_md_top → md_top
+    TOP -->|"enable"| CTRL
+    CTRL -->|"cyclecnt[5:0],<br/>blockcnt[6:0]"| FETCH8
+    CTRL -->|"gxgyrun"| GXGY
+    CTRL -->|"counterrun1/2"| COUNTER
+
+    %% RC chain
+    TOP -->|"md_done_w"| RC_PIPE
+    RC_PIPE -->|"modebest64_i[27:0]"| RC_REG_BANK
+    RC_PIPE -->|"rc_qp_o[5:0]"| TOP
+    RC_PIPE -.->|"rc_done_o"| TOP
+
+    %% Done
+    TOP -.->|"prei_done_o"| BUF
+
+    %% Mode RAM output
+    PING_PONG -->|"posi_md_data_o[5:0]"| TOP
+
+    %% Style
+    classDef external fill:#f5f5f5,stroke:#999,color:#000
+    classDef wrapper fill:#4a90d9,stroke:#2c5f8a,color:#fff,font-weight:bold
+    classDef core fill:#d9534f,stroke:#a94442,color:#fff,font-weight:bold
+    classDef fetch fill:#9b59b6,stroke:#7d3c98,color:#fff,font-weight:bold
+    classDef gradient fill:#9b59b6,stroke:#7d3c98,color:#fff
+    classDef decision fill:#9b59b6,stroke:#7d3c98,color:#fff
+    classDef ctrlBlock fill:#e8a838,stroke:#b07d28,color:#000,font-weight:bold
+    classDef writeBlock fill:#34495e,stroke:#2c3e50,color:#fff,font-weight:bold
+    classDef rcBlock fill:#27ae60,stroke:#1e8449,color:#fff,font-weight:bold
+    classDef memBlock fill:#5cb85c,stroke:#3d8b3d,color:#fff,font-weight:bold
+
+    class CLK,RSTN,START,PIXEL,RC_IN,RC_REG,MD_RD_ENA,MD_RD_ADDR,SEL external
+    class BUF,ADDR_REMAP,PING_PONG wrapper
+    class TOP core
+    class MD core
+    class MT core
+    class FETCH8,MDFETCH fetch
+    class GXGY,COUNTER gradient
+    class COMPARE,DCPLANAR decision
+    class CTRL ctrlBlock
+    class MODWRITE writeBlock
+    class RC,RC_PIPE,RC_REG_BANK rcBlock
+    class MRAM0,MRAM1 memBlock
