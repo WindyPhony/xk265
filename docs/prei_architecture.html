@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>prei — intra mode decision &amp; LCU rate control</title>
+<script>
+  (function () {
+    const saved = localStorage.getItem('theme');
+    const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.classList.toggle('dark', dark);
+  })();
+</script>
+<style>
+  :root {
+    --bg: #FAF9F5; --surface: #FFFFFF; --surface2: #F0EEE6;
+    --ink: #141413; --body: #3D3D3A; --muted: #87867F;
+    --line: #D1CFC5; --line-soft: #E6E3DA;
+    --clay: #D97757; --clay-soft: rgba(217,119,87,0.10);
+    --olive: #788C5D; --olive-soft: rgba(120,140,93,0.12);
+    --gold: #C9A45C; --blue: #5B7E96;
+    --zone: rgba(20,20,19,0.025); --zone-line: #D1CFC5;
+    --serif: ui-serif, Georgia, "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  html.dark {
+    --bg: #141413; --surface: #1F1F1D; --surface2: #2A2A28;
+    --ink: #FAF9F5; --body: #D1CFC5; --muted: #87867F;
+    --line: #3D3D3A; --line-soft: #2A2A28;
+    --clay: #E48A6E; --clay-soft: rgba(228,138,110,0.14);
+    --olive: #9DB07C; --olive-soft: rgba(157,176,124,0.16);
+    --gold: #D4B36F; --blue: #7FA3BC;
+    --zone: rgba(250,249,245,0.03); --zone-line: #3D3D3A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--body); font-family: var(--sans);
+    -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* ── top bar ─────────────────────────────── */
+  .bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 12px 20px; border-bottom: 1px solid var(--line-soft); flex: none;
+  }
+  .bar h1 { font-family: var(--serif); font-weight: 500; font-size: 19px; color: var(--ink); letter-spacing: -0.01em; }
+  .bar .sub { font-family: var(--mono); font-size: 10.5px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .spacer { flex: 1; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+    padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px;
+    background: transparent; color: var(--muted); cursor: pointer; transition: all .15s ease;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--muted); }
+  .chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  #themeToggle {
+    font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: transparent; color: var(--muted); cursor: pointer;
+  }
+  #themeToggle:hover { color: var(--ink); border-color: var(--muted); }
+
+  /* ── stage ───────────────────────────────── */
+  .stage { flex: 1; position: relative; min-height: 0; }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* zones */
+  .zone rect { fill: var(--zone); stroke: var(--zone-line); stroke-width: 1; stroke-dasharray: 5 5; rx: 16; }
+  .zone .ztitle { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; fill: var(--muted); }
+  .zone .zsub { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); opacity: 0.75; }
+  .note { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); opacity: 0.85; }
+
+  /* nodes */
+  .node { cursor: pointer; }
+  .node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; rx: 10; transition: stroke .15s ease, filter .15s ease; }
+  .node:hover rect { stroke: var(--muted); }
+  .node.sel rect { stroke: var(--clay) !important; stroke-width: 2; }
+  .node .t  { font-family: var(--sans); font-size: 14.5px; font-weight: 600; fill: var(--ink); pointer-events: none; }
+  .node .m  { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); pointer-events: none; }
+  .node .k  { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; fill: var(--clay); pointer-events: none; }
+  .node.gate rect { fill: var(--clay-soft); stroke: var(--clay); }
+  .node.do rect { fill: var(--olive-soft); stroke: var(--olive); }
+  .node.store rect { fill: var(--surface2); }
+  .node.ext rect { stroke-dasharray: 6 3; }
+
+  /* edges */
+  .edge { stroke: var(--muted); stroke-width: 1.6; fill: none; marker-end: url(#a-mut); transition: opacity .2s ease, stroke .2s ease; }
+  .edge.dash { stroke-dasharray: 5 4; }
+  .elbl { font-family: var(--mono); font-size: 10px; fill: var(--muted); transition: opacity .2s ease; }
+
+  /* flow highlighting */
+  .stage.flowing .edge { opacity: 0.13; }
+  .stage.flowing .elbl { opacity: 0.13; }
+  .stage.flowing .node { opacity: 0.30; }
+  .stage.flowing .zone { opacity: 0.45; }
+  .stage.flowing .edge.lit {
+    opacity: 1; stroke: var(--clay); marker-end: url(#a-clay);
+    stroke-dasharray: 7 5; animation: march 0.9s linear infinite;
+  }
+  .stage.flowing .edge.lit.rc {
+    stroke: var(--olive); marker-end: url(#a-olive);
+  }
+  .stage.flowing .elbl.lit { opacity: 1; fill: var(--clay); }
+  .stage.flowing .elbl.lit.rc { fill: var(--olive); }
+  .stage.flowing .node.lit { opacity: 1; }
+  .stage.flowing .node.lit rect { stroke: var(--clay); }
+  .stage.flowing .node.lit.rc rect { stroke: var(--olive); }
+  @keyframes march { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { .stage.flowing .edge.lit { animation: none; } }
+
+  /* ── floating cards ──────────────────────── */
+  .card {
+    position: absolute; max-width: 400px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+  }
+  #detail { right: 16px; bottom: 16px; width: 350px; }
+  #detail h3 { font-family: var(--serif); font-weight: 500; font-size: 17px; color: var(--ink); margin-bottom: 2px; }
+  #detail .meta { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-bottom: 8px; }
+  #detail p { font-size: 12.5px; line-height: 1.55; }
+  #detail p code, #flowcap code { font-family: var(--mono); font-size: 11px; color: var(--clay); }
+  #flowcap { left: 16px; bottom: 16px; max-width: 480px; display: none; }
+  #flowcap.show { display: block; }
+  #flowcap .fname { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--clay); margin-bottom: 6px; }
+  #flowcap ol { margin-left: 18px; }
+  #flowcap li { font-size: 12.5px; line-height: 1.55; }
+  .src { position: absolute; top: 10px; right: 16px; font-family: var(--mono); font-size: 10px; color: var(--muted); opacity: 0.8; }
+  @media (max-width: 880px) {
+    body { overflow: auto; }
+    .stage { min-height: 70vh; }
+    #detail { position: static; width: auto; margin: 10px 16px; }
+    #flowcap { position: static; margin: 0 16px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div>
+    <h1>prei — intra mode decision &amp; LCU rate control</h1>
+    <div class="sub">hevc_md_top + rate_control · 85-entry mode RAM ping-pong</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="chips" id="chips">
+    <button class="chip on" data-flow="all">Everything</button>
+    <button class="chip" data-flow="fetch">Pixel fetch</button>
+    <button class="chip" data-flow="gradient">Gradient</button>
+    <button class="chip" data-flow="decide">Decide → RAM → POSI</button>
+    <button class="chip" data-flow="rc">Rate control</button>
+  </div>
+  <button id="themeToggle">Theme</button>
+</div>
+
+<div class="stage" id="stage">
+<svg viewBox="0 0 1600 1060" preserveAspectRatio="xMidYMid meet" role="img" aria-label="prei block architecture diagram">
+  <defs>
+    <marker id="a-mut" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill: var(--muted)"/>
+    </marker>
+    <marker id="a-clay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill: var(--clay)"/>
+    </marker>
+    <marker id="a-olive" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill: var(--olive)"/>
+    </marker>
+  </defs>
+
+  <!-- ── zones ─────────────────────────────── -->
+  <g class="zone" id="z-ctx">
+    <rect x="24" y="130" width="248" height="890"/>
+    <text class="ztitle" x="44" y="160">Pipeline context</text>
+    <text class="zsub" x="44" y="178">neighbors wired into prei</text>
+  </g>
+  <g class="zone" id="z-buf">
+    <rect x="304" y="80" width="628" height="950"/>
+    <text class="ztitle" x="324" y="110">prei_top_buf</text>
+    <text class="zsub" x="324" y="128">rtl/top/prei_top_buf.v · prei_top + mode RAM ping-pong</text>
+  </g>
+  <g class="zone" id="z-preitop">
+    <rect x="324" y="300" width="588" height="700"/>
+    <text class="ztitle" x="344" y="330">prei_top</text>
+    <text class="zsub" x="344" y="348">rtl/prei/prei_top.v</text>
+  </g>
+  <g class="zone" id="z-md">
+    <rect x="344" y="345" width="548" height="430"/>
+    <text class="ztitle" x="364" y="375">hevc_md_top</text>
+    <text class="zsub" x="364" y="393">intra mode decision · 41 cycles per 8×8 block</text>
+  </g>
+  <g class="zone" id="z-mdtop">
+    <rect x="364" y="420" width="508" height="330"/>
+    <text class="ztitle" x="384" y="450">md_top</text>
+    <text class="zsub" x="384" y="468">gradient-based decision, 8×8 → 64×64</text>
+  </g>
+  <g class="zone" id="z-rc">
+    <rect x="344" y="800" width="548" height="170"/>
+    <text class="ztitle" x="364" y="830">rate_control</text>
+    <text class="zsub" x="364" y="848">LCU-level QP · 11 cycles</text>
+  </g>
+  <g class="zone" id="z-consumers">
+    <rect x="964" y="130" width="612" height="890"/>
+    <text class="ztitle" x="984" y="160">Downstream</text>
+    <text class="zsub" x="984" y="178">QP &amp; mode consumers</text>
+  </g>
+
+  <!-- ── edges ─────────────────────────────── -->
+  <path class="edge dash" id="e-ctx-8"    d="M148,300 C 148,320 148,340 148,360"/>
+  <path class="edge" id="e-ctx-start"     d="M248,220 C 282,220 292,340 324,352"/>
+  <path class="edge" id="e-8-fetch"       d="M248,430 C 300,430 322,437 364,437"/>
+  <path class="edge dash" id="e-reg-rc"   d="M248,685 C 300,700 320,850 364,855"/>
+  <path class="edge" id="e-8-md"          d="M454,485 C 454,512 434,522 434,545"/>
+  <path class="edge" id="e-md-gx"         d="M484,572 L500,572"/>
+  <path class="edge" id="e-gx-cnt"        d="M595,572 L611,572"/>
+  <path class="edge" id="e-cnt-cmp"       d="M658,600 C 658,626 431,626 431,650"/>
+  <path class="edge" id="e-cmp-dc"        d="M479,677 L520,677"/>
+  <path class="edge" id="e-dc-mw"         d="M585,650 C 585,560 670,560 670,485"/>
+  <path class="edge" id="e-mw-ram0"       d="M660,390 C 660,300 475,300 475,210"/>
+  <path class="edge" id="e-mw-ram1"       d="M705,390 C 705,300 735,300 735,210"/>
+  <path class="edge" id="e-ram-posi"      d="M610,170 C 780,170 820,228 984,228"/>
+  <path class="edge" id="e-ram1-posi"     d="M890,170 C 940,170 958,252 984,252"/>
+  <path class="edge" id="e-dc-rc"         d="M585,705 C 585,770 484,770 484,835"/>
+  <path class="edge dash rc" id="e-cabac-rc" d="M1310,415 C 1100,415 860,850 604,882"/>
+  <path class="edge" id="e-rc-in"         d="M604,882 L620,882"/>
+  <path class="edge" id="e-rc-qp-pipe"    d="M860,882 C 920,882 940,450 984,415"/>
+  <path class="edge rc" id="e-rc-qp-cabac" d="M740,835 C 820,700 1200,415 1310,415"/>
+  <path class="edge rc" id="e-rc-qp-db"   d="M740,930 C 800,930 900,610 984,570"/>
+  <path class="edge rc" id="e-rc-top"     d="M604,915 C 700,1000 1200,650 1310,600"/>
+  <path class="edge dash" id="e-done-ctx" d="M660,930 C 480,940 300,620 150,320"/>
+
+  <!-- edge labels -->
+  <text class="elbl" data-e="e-ctx-8"    x="118" y="332" text-anchor="middle">load_cur_luma_ena</text>
+  <text class="elbl" data-e="e-ctx-start" x="272" y="288" text-anchor="middle">prei_start_i</text>
+  <text class="elbl" data-e="e-8-fetch"  x="306" y="418" text-anchor="middle">md_ren/sel/size · 4x4_x/y · idx</text>
+  <text class="elbl" data-e="e-reg-rc"   x="300" y="806" text-anchor="middle">reg_k · bitnum · ROI · L1/L2 · qp</text>
+  <text class="elbl" data-e="e-8-md"     x="444" y="528" text-anchor="middle">rf_512bit</text>
+  <text class="elbl" data-e="e-md-gx"    x="492" y="565" text-anchor="middle">x1 x2 x3</text>
+  <text class="elbl" data-e="e-gx-cnt"   x="603" y="565" text-anchor="middle">gx gy</text>
+  <text class="elbl" data-e="e-cnt-cmp"  x="545" y="622" text-anchor="middle">mode2..33</text>
+  <text class="elbl" data-e="e-cmp-dc"   x="500" y="670" text-anchor="middle">bestmode · modebest*</text>
+  <text class="elbl" data-e="e-dc-mw"    x="652" y="578" text-anchor="middle">bestmode_o/16/32/64</text>
+  <text class="elbl" data-e="e-mw-ram0"  x="560" y="300" text-anchor="middle">md_we/waddr/wdata</text>
+  <text class="elbl" data-e="e-mw-ram1"  x="716" y="300" text-anchor="middle">sel ping-pong</text>
+  <text class="elbl" data-e="e-ram-posi" x="800" y="200" text-anchor="middle">posi_md_ena/addr → data</text>
+  <text class="elbl" data-e="e-ram1-posi" x="936" y="214" text-anchor="middle">addr remap &lt;84 → +1</text>
+  <text class="elbl" data-e="e-dc-rc"    x="530" y="768" text-anchor="middle">modebest64</text>
+  <text class="elbl rc" data-e="e-cabac-rc" x="940" y="652" text-anchor="middle">rc_actual_bitnum_o</text>
+  <text class="elbl" data-e="e-rc-in"    x="612" y="875" text-anchor="middle">diff · qp</text>
+  <text class="elbl" data-e="e-rc-qp-pipe" x="972" y="630" text-anchor="middle">rc_qp_o</text>
+  <text class="elbl rc" data-e="e-rc-qp-cabac" x="1020" y="640" text-anchor="middle">rc_qp_o</text>
+  <text class="elbl rc" data-e="e-rc-qp-db" x="900" y="760" text-anchor="middle">rc_qp_o</text>
+  <text class="elbl rc" data-e="e-rc-top" x="1050" y="880" text-anchor="middle">mod64_sum_o</text>
+  <text class="elbl" data-e="e-done-ctx" x="330" y="700" text-anchor="middle">prei_done_o</text>
+
+  <!-- ── context nodes ─────────────────────── -->
+  <g class="node ext" data-k="enc_ctrl">
+    <rect x="48" y="180" width="200" height="120"/>
+    <text class="t" x="68" y="210">enc_ctrl</text>
+    <text class="k" x="68" y="228">pipeline kickoff</text>
+    <text class="m" x="68" y="248">rtl/top/enc_ctrl.v</text>
+    <text class="m" x="68" y="266">prei_start · CTU x/y</text>
+    <text class="m" x="68" y="284">prei_done handshake</text>
+  </g>
+  <g class="node ext" data-k="fetch_top">
+    <rect x="48" y="360" width="200" height="140"/>
+    <text class="t" x="68" y="390">fetch_top</text>
+    <text class="k" x="68" y="408">pixel source</text>
+    <text class="m" x="68" y="428">rtl/fetch/fetch_top.v</text>
+    <text class="m" x="68" y="446">current luma pixels</text>
+    <text class="m" x="68" y="464">256-bit md_data_i reads</text>
+    <text class="m" x="68" y="482">from on-chip picture mem</text>
+  </g>
+  <g class="node ext store" data-k="regfile">
+    <rect x="48" y="600" width="200" height="170"/>
+    <text class="t" x="68" y="630">RC config regs</text>
+    <text class="k" x="68" y="648">from enc_top sys_rc_*</text>
+    <text class="m" x="68" y="668">reg_k · target bits</text>
+    <text class="m" x="68" y="686">ROI rect x/y/w/h</text>
+    <text class="m" x="68" y="704">L1 / L2 frame byte</text>
+    <text class="m" x="68" y="722">initial/max/min qp</text>
+    <text class="m" x="68" y="740">lcu_rc_en</text>
+  </g>
+
+  <!-- ── mode RAM ping-pong ────────────────── -->
+  <g class="node store" data-k="ram0">
+    <rect x="340" y="130" width="270" height="80"/>
+    <text class="t" x="360" y="158">mode RAM · buf 0</text>
+    <text class="k" x="360" y="176">prei writes</text>
+    <text class="m" x="360" y="194">prei_md_ram_sp_85x6</text>
+  </g>
+  <g class="node store" data-k="ram1">
+    <rect x="620" y="130" width="270" height="80"/>
+    <text class="t" x="640" y="158">mode RAM · buf 1</text>
+    <text class="k" x="640" y="176">posi reads</text>
+    <text class="m" x="640" y="194">prei_md_ram_sp_85x6</text>
+  </g>
+  <text class="note" x="465" y="248" text-anchor="middle">ping-pong · sel_mod_2_i (sel_r) toggles per frame</text>
+
+  <!-- ── hevc_md_top ───────────────────────── -->
+  <g class="node" data-k="fetch8x8">
+    <rect x="364" y="390" width="180" height="95"/>
+    <text class="t" x="384" y="418">fetch8x8</text>
+    <text class="k" x="384" y="436">pixel staging</text>
+    <text class="m" x="384" y="456">rtl/prei/fetch8x8.v</text>
+    <text class="m" x="384" y="474">2×256-bit → rf_512bit</text>
+  </g>
+  <g class="node" data-k="mode_write">
+    <rect x="600" y="390" width="140" height="95"/>
+    <text class="t" x="620" y="418">mode_write</text>
+    <text class="k" x="620" y="436">modes @ cnt 11–14</text>
+    <text class="m" x="620" y="456">rtl/prei/mode_write.v</text>
+    <text class="m" x="620" y="474">64+16+4+1 = 85</text>
+  </g>
+
+  <!-- ── md_top internals ───────────────────── -->
+  <g class="node gate" data-k="control">
+    <rect x="760" y="440" width="90" height="60"/>
+    <text class="t" x="780" y="466">control</text>
+    <text class="m" x="780" y="484">FSM · 41 cyc</text>
+  </g>
+  <g class="node do" data-k="md_fetch">
+    <rect x="384" y="545" width="100" height="55"/>
+    <text class="t" x="404" y="569">md_fetch</text>
+    <text class="m" x="404" y="587">3×3 Sobel window</text>
+  </g>
+  <g class="node do" data-k="gxgy">
+    <rect x="500" y="545" width="95" height="55"/>
+    <text class="t" x="520" y="569">gxgy</text>
+    <text class="m" x="520" y="587">Sobel gx · gy</text>
+  </g>
+  <g class="node do" data-k="counter">
+    <rect x="611" y="545" width="95" height="55"/>
+    <text class="t" x="631" y="569">counter</text>
+    <text class="m" x="631" y="587">32× MAC → modes</text>
+  </g>
+  <g class="node gate" data-k="compare">
+    <rect x="384" y="650" width="95" height="55"/>
+    <text class="t" x="404" y="674">compare</text>
+    <text class="m" x="404" y="692">min-tree · sums</text>
+  </g>
+  <g class="node gate" data-k="dc_planar">
+    <rect x="520" y="650" width="130" height="55"/>
+    <text class="t" x="540" y="674">dc_planar</text>
+    <text class="m" x="540" y="692">Planar/DC vs angular</text>
+  </g>
+  <text class="note" x="806" y="560" text-anchor="middle">gxgyrun · newblock · finish</text>
+  <text class="note" x="806" y="640" text-anchor="middle">counterrun1/2</text>
+  <text class="note" x="850" y="700" text-anchor="end">decide @ cnt 35·38·39·40</text>
+
+  <!-- ── rate_control ──────────────────────── -->
+  <g class="node do" data-k="rc_acc">
+    <rect x="364" y="835" width="240" height="95"/>
+    <text class="t" x="384" y="863">rate_control · accumulate</text>
+    <text class="m" x="384" y="883">frame_bit += actual_bitnum</text>
+    <text class="m" x="384" y="901">modebest64 pipe ×7</text>
+    <text class="m" x="384" y="919">predict = mb7·k &gt;&gt; 28</text>
+  </g>
+  <g class="node gate" data-k="rc_qp">
+    <rect x="620" y="835" width="240" height="95"/>
+    <text class="t" x="640" y="863">rate_control · QP update</text>
+    <text class="m" x="640" y="883">diff_level by L1/L2</text>
+    <text class="m" x="640" y="901">qp = init_qp ± level</text>
+    <text class="m" x="640" y="919">ROI −delta · clamp → rc_qp_o</text>
+  </g>
+
+  <!-- ── consumers ─────────────────────────── -->
+  <g class="node" data-k="posi_top_buf">
+    <rect x="984" y="200" width="300" height="110"/>
+    <text class="t" x="1004" y="230">posi_top_buf</text>
+    <text class="k" x="1004" y="248">pos_intra consumer</text>
+    <text class="m" x="1004" y="268">rtl/top/posi_top_buf.v</text>
+    <text class="m" x="1004" y="286">reads mode RAM (ping-pong)</text>
+    <text class="m" x="1004" y="304">modes → intra pred + SATD</text>
+  </g>
+  <g class="node" data-k="enc_data_pipeline">
+    <rect x="984" y="370" width="300" height="90"/>
+    <text class="t" x="1004" y="398">enc_data_pipeline</text>
+    <text class="k" x="1004" y="416">QP fan-out</text>
+    <text class="m" x="1004" y="436">rtl/top/enc_data_pipeline.v</text>
+    <text class="m" x="1004" y="452">rc_qp_o → posi_qp / fme_qp</text>
+  </g>
+  <g class="node" data-k="cabac_top">
+    <rect x="1310" y="370" width="240" height="90"/>
+    <text class="t" x="1330" y="398">cabac_top</text>
+    <text class="k" x="1330" y="416">feedback leg</text>
+    <text class="m" x="1330" y="436">rtl/cabac/cabac_top.v</text>
+    <text class="m" x="1330" y="452">rc_qp_i · reports bit count</text>
+  </g>
+  <g class="node" data-k="dbsao_top">
+    <rect x="984" y="530" width="300" height="80"/>
+    <text class="t" x="1004" y="558">dbsao_top</text>
+    <text class="m" x="1004" y="578">rtl/db/dbsao_top.v</text>
+    <text class="m" x="1004" y="596">deblock/SAO · rc_qp_i</text>
+  </g>
+  <g class="node" data-k="enc_top">
+    <rect x="1310" y="530" width="240" height="80"/>
+    <text class="t" x="1330" y="558">enc_top</text>
+    <text class="m" x="1330" y="578">rtl/top/enc_top.v</text>
+    <text class="m" x="1330" y="596">sys_rc_mod64_sum_o</text>
+  </g>
+</svg>
+
+  <div class="src">rtl/prei/*.v · rtl/top/prei_top_buf.v · enc_core.v · enc_top.v</div>
+
+  <div class="card" id="flowcap">
+    <div class="fname" id="f-name"></div>
+    <ol id="f-steps"></ol>
+  </div>
+
+  <div class="card" id="detail">
+    <h3 id="d-title">Click anything</h3>
+    <div class="meta" id="d-meta">node detail</div>
+    <p id="d-body">Every box is clickable. The chips up top light up the paths — pixel fetch, gradient accumulation, mode decision → RAM → POSI, and the LCU rate-control loop.</p>
+  </div>
+</div>
+
+<script>
+const DETAIL = {
+  enc_ctrl:   { t:"enc_ctrl", m:"rtl/top/enc_ctrl.v · pipeline kickoff", b:"Raises <code>prei_start_i</code> for each LCU to launch mode decision, provides the CTU position (<code>rc_ctu_x_i/y_i</code>) used by the ROI check, and receives <code>prei_done_o</code> (asserted by rate control after its 11 cycles) back." },
+  fetch_top:  { t:"fetch_top", m:"rtl/fetch/fetch_top.v · pixel source", b:"Serves current-frame luma over the <code>md_*</code> read interface. <code>fetch8x8</code> drives <code>md_ren/sel/size</code>, <code>md_4x4_x/y</code> and <code>md_idx_o</code> and gets 256 bits back per read (<code>md_data_i</code>) from the on-chip picture memory." },
+  regfile:    { t:"RC config registers", m:"from enc_top sys_rc_*", b:"Software-programmed rate-control parameters: <code>reg_k</code> (prediction slope), target bit budget, ROI rectangle, L1/L2 frame-byte thresholds, initial/max/min/delta QP and <code>lcu_rc_en</code>. All read by <code>rate_control</code>." },
+  ram0:       { t:"mode RAM · buf 0", m:"prei_md_ram_sp_85x6 · 85×6", b:"Holds the winning intra mode per partition — 64×8×8 + 16×16×16 + 4×32×32 + 1×64×64 = 85 entries. One half of the ping-pong pair; <code>sel_mod_2_i</code> picks whether prei writes or posi reads it." },
+  ram1:       { t:"mode RAM · buf 1", m:"prei_md_ram_sp_85x6 · 85×6", b:"Second copy of the mode RAM. The selector toggles every frame (<code>sel_r</code>), so prei fills one buffer while pos_intra consumes the other — no read/write hazard." },
+  fetch8x8:   { t:"fetch8x8", m:"rtl/prei/fetch8x8.v · pixel staging", b:"Fetches each 8×8 block's 64 luma pixels. Reads two 256-bit halves into the <code>rf_512bit</code> shift register (at cnt 2 and cnt 10), asserts <code>md_ren_o</code> across cnt 0..17, and counts 65 blocks per 64×64 LCU (64 sub-blocks + the 64×64 root)." },
+  control:    { t:"control", m:"rtl/prei/control.v · FSM", b:"Master state machine: <code>cyclecnt</code> counts 0..40 per 8×8 block, emits <code>newblock</code> at cnt 40, raises <code>gxgyrun</code> at cnt ≥ 5, and delays it into <code>counterrun1/2</code>. <code>finish</code> fires at blockcnt 65, cnt 15. ~41 cycles per block, ~2665 per LCU." },
+  md_fetch:   { t:"md_fetch", m:"rtl/prei/md_fetch.v · windowing", b:"Slides a 3×3 Sobel window over the staged pixels at cnt 5..40, extracting three rows of three 8-bit pixels (<code>x1 x2 x3</code>) for the gradient stage." },
+  gxgy:       { t:"gxgy", m:"rtl/prei/gxgy.v · Sobel gradient", b:"Computes the Sobel gradient of the 3×3 window: <code>gx</code> and <code>gy</code>, signed 11-bit. <code>gx = (right column − left column)·weights</code>, <code>gy = (bottom − top)·weights</code>." },
+  counter:    { t:"counter", m:"rtl/prei/counter.v · 32× MAC", b:"For each of the 32 angular modes (2..33), projects <code>(gx,gy)</code> onto the mode's direction weights (e.g. mode10 = 128·gx) and accumulates Σ|projection| over the block. 32 parallel dot products, latched on <code>counterrun1/2</code>." },
+  compare:    { t:"compare", m:"rtl/prei/compare.v · min-tree", b:"32-input minimum tree picks <code>bestmode</code> for the 8×8 block, and hierarchically sums <code>modebest</code> → <code>modebest16/32/64</code> so the best mode for each larger partition can be found by accumulation." },
+  dc_planar:  { t:"dc_planar", m:"rtl/prei/DC_Plannar.v · final decision", b:"Decides Planar (0), DC (1) or the best angular mode per partition size. Uses <code>modedata = Σ(|gx|+|gy|)</code> vs DC thresholds (288/1152/4608/18432) and <code>Plan×modedata vs modebest</code> for Planar. Fires at cnt 35 (8×8), 38 (16×16), 39 (32×32), 40 (64×64)." },
+  mode_write: { t:"mode_write", m:"rtl/prei/mode_write.v · mode RAM writeback", b:"Writes the winning mode into the mode RAM at cnt 11..14 of the <i>next</i> block: 8×8 → <code>addr = blockcnt+19</code>, 16×16 → <code>blockcnt[6:2]+4</code>, 32×32 → <code>blockcnt[6:4]</code>, 64×64 → addr 0. 85 entries total." },
+  rc_acc:     { t:"rate_control · accumulate", m:"rtl/prei/rate_control.v", b:"Accumulates <code>actual_bitnum_i</code> (bits reported by cabac) into <code>frame_bit</code>, and pushes <code>modebest64</code> through a 7-deep pipeline (<code>modebest_1..7</code>). Predicted bits for this LCU: <code>predict_bit = modebest_7 · reg_k &gt;&gt; 28</code>." },
+  rc_qp:      { t:"rate_control · QP update", m:"rtl/prei/rate_control.v", b:"<code>diff_abs = |frame_bit − predict_bit|</code> maps to a <code>diff_level</code> via the L1/L2 thresholds. <code>qp_tmp = initial_qp ± level</code> (or stays at initial on row 0 / when <code>lcu_rc_en</code> off); an ROI hit subtracts <code>delta_qp</code>; the result clamps to [min, max] and drives <code>rc_qp_o</code>. Done after 11 cycles." },
+  posi_top_buf:{ t:"posi_top_buf", m:"rtl/top/posi_top_buf.v · pos_intra", b:"Reads the mode RAM through <code>posi_md_ena/addr/data</code> with the address remap (<code>addr &lt; 84 → +1</code>, else <code>21+(addr−84)/4</code>). Consumes the buffer prei is not writing, then runs intra prediction + SATD on the decided modes." },
+  enc_data_pipeline:{ t:"enc_data_pipeline", m:"rtl/top/enc_data_pipeline.v · QP fan-out", b:"Takes the LCU-level <code>rc_qp_o</code> and forwards it as <code>posi_qp_o</code> and <code>fme_qp_o</code> so every downstream stage quantizes with the same per-LCU QP." },
+  cabac_top:  { t:"cabac_top", m:"rtl/cabac/cabac_top.v · entropy coder", b:"Consumes <code>rc_qp_i</code> per LCU for coefficient context coding, and — closing the loop — reports the actually encoded bit count back as <code>rc_actual_bitnum_o</code> to rate control's accumulator." },
+  dbsao_top:  { t:"dbsao_top", m:"rtl/db/dbsao_top.v", b:"The deblocking/SAO block also consumes <code>rc_qp_i</code>, using the LCU QP for filter boundary-strength decisions." },
+  enc_top:    { t:"enc_top", m:"rtl/top/enc_top.v", b:"Exposes <code>sys_rc_mod64_sum_o</code> (= <code>modebest_1[31:0]</code>) up the hierarchy for rate estimation / reporting." },
+};
+
+const FLOWS = {
+  fetch: {
+    name: "Pixel fetch — current luma in",
+    cls: "",
+    edges: ["e-ctx-8","e-ctx-start","e-8-fetch","e-8-md"],
+    nodes: ["enc_ctrl","fetch_top","fetch8x8","md_fetch"],
+    steps: ["<code>enc_ctrl</code> asserts <code>prei_start_i</code> and <code>load_cur_luma_ena</code>","<code>fetch8x8</code> issues <code>md_ren_o</code> (cnt 0..17) and reads 2×256 bits (cnt 2 &amp; 10) into <code>rf_512bit</code>","<code>md_fetch</code> slides a 3×3 Sobel window (cnt 5..40) → <code>x1 x2 x3</code>"]
+  },
+  gradient: {
+    name: "Gradient & accumulate — 32 directions",
+    cls: "",
+    edges: ["e-md-gx","e-gx-cnt"],
+    nodes: ["md_fetch","gxgy","counter","control"],
+    steps: ["<code>control</code> raises <code>gxgyrun</code> at cnt 5, <code>counterrun1/2</code> follow one cycle behind","<code>gxgy</code> computes Sobel <code>gx</code>, <code>gy</code> per window position","<code>counter</code> runs 32 parallel MACs and accumulates Σ|projection| for <code>mode2..33</code> (cnt ~6..40)"]
+  },
+  decide: {
+    name: "Decide → RAM → POSI",
+    cls: "",
+    edges: ["e-cnt-cmp","e-cmp-dc","e-dc-mw","e-mw-ram0","e-mw-ram1","e-ram-posi","e-ram1-posi"],
+    nodes: ["counter","compare","dc_planar","mode_write","ram0","ram1","posi_top_buf"],
+    steps: ["<code>compare</code> min-tree picks <code>bestmode</code> per 8×8 and builds <code>modebest16/32/64</code> sums","<code>dc_planar</code> chooses Planar/DC/angular — 8×8 @cnt 35, 16×16 @38, 32×32 @39, 64×64 @40","<code>mode_write</code> stores modes at cnt 11–14 → 85-entry RAM (ping-pong via <code>sel_mod_2_i</code>)","<code>posi_top_buf</code> reads the other buffer (addr remap &lt;84 → +1) for intra pred + SATD"]
+  },
+  rc: {
+    name: "LCU rate-control loop",
+    cls: "rc",
+    edges: ["e-dc-rc","e-cabac-rc","e-rc-in","e-rc-qp-pipe","e-rc-qp-cabac","e-rc-qp-db","e-rc-top","e-done-ctx"],
+    nodes: ["dc_planar","rc_acc","rc_qp","cabac_top","enc_data_pipeline","dbsao_top","enc_top","enc_ctrl"],
+    steps: ["<code>rate_control</code> accumulates <code>frame_bit</code> and pipes <code>modebest64</code> 7 deep","<code>predict_bit = modebest_7 · reg_k &gt;&gt; 28</code>; diff vs actual maps to <code>diff_level</code> by L1/L2","<code>qp = initial_qp ± level</code>, ROI −delta, clamp → <code>rc_qp_o</code> after 11 cycles, then <code>prei_done_o</code>","<code>rc_qp_o</code> fans to cabac / enc_data_pipeline (posi+fme) / dbsao; <code>mod64_sum_o</code> → enc_top"]
+  }
+};
+
+const stage = document.getElementById('stage');
+const nodes = document.querySelectorAll('.node');
+const edges = document.querySelectorAll('.edge');
+const elbls = document.querySelectorAll('.elbl');
+const chips = document.querySelectorAll('.chip');
+const fcap = document.getElementById('flowcap');
+
+function setFlow(key) {
+  chips.forEach(c => c.classList.toggle('on', c.dataset.flow === key));
+  edges.forEach(e => e.classList.remove('lit','rc'));
+  elbls.forEach(l => l.classList.remove('lit','rc'));
+  nodes.forEach(n => n.classList.remove('lit','rc'));
+  if (key === 'all') { stage.classList.remove('flowing'); fcap.classList.remove('show'); return; }
+  const f = FLOWS[key];
+  stage.classList.add('flowing');
+  f.edges.forEach(id => { const e = document.getElementById(id); if (e) { e.classList.add('lit'); if (f.cls) e.classList.add(f.cls); } });
+  elbls.forEach(l => { if (f.edges.includes(l.dataset.e)) { l.classList.add('lit'); if (f.cls) l.classList.add(f.cls); } });
+  f.nodes.forEach(k => { const n = document.querySelector(`.node[data-k="${k}"]`); if (n) { n.classList.add('lit'); if (f.cls) n.classList.add(f.cls); } });
+  document.getElementById('f-name').textContent = f.name;
+  document.getElementById('f-steps').innerHTML = f.steps.map(s => `<li>${s}</li>`).join('');
+  fcap.classList.add('show');
+}
+chips.forEach(c => c.addEventListener('click', () => setFlow(c.dataset.flow)));
+
+nodes.forEach(n => n.addEventListener('click', () => {
+  nodes.forEach(x => x.classList.remove('sel'));
+  n.classList.add('sel');
+  const d = DETAIL[n.dataset.k];
+  if (!d) return;
+  document.getElementById('d-title').textContent = d.t;
+  document.getElementById('d-meta').textContent = d.m;
+  document.getElementById('d-body').innerHTML = d.b;
+}));
+
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const dark = !document.documentElement.classList.contains('dark');
+  document.documentElement.classList.toggle('dark', dark);
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+});
+</script>
+</body>
+</html>
