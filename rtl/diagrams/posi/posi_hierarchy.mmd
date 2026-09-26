@@ -1,0 +1,94 @@
+---
+title: POSI Module Hierarchy
+created: 2026-09-04
+status: DRAFT
+---
+flowchart TB
+    subgraph POSI_TOP["posi_top (posi_top.v)"]
+        direction TB
+
+        subgraph CTRL["posi_ctrl"]
+            direction TB
+            FSM["9-State FSM<br/>IDLE→TRA_PRE→SIZE_04→<br/>SIZE_08→SIZE_16→SIZE_32→<br/>WAIT→DECI→TRA_POS"]
+            POS_CNT["position_r [7:0]<br/>4×4 Block Position"]
+            MODE_CNT["cnt_mode_r [2:0]<br/>Mode Index"]
+            TRAV_CNT["cnt_trav_r [5:0]<br/>Traversal Counter"]
+            WAIT_CNT["cnt_wait_r [4:0]<br/>Pipeline Flush"]
+        end
+
+        subgraph TRANSFER["posi_transfer"]
+            direction TB
+            TR_FSM["4-State FSM<br/>IDLE→PRE→POS_COL→POS_FRA"]
+            PIXEL_REARR["Pixel Rearrangement<br/>256b → row/col/fra"]
+            TR_DELAY["2-Cycle Pipeline<br/>val_dly_r, idx_dly_r"]
+        end
+
+        subgraph REFERENCE["posi_reference"]
+            direction TB
+            RAW_PIPE["RAW Pipeline<br/>5-cycle delay chain<br/>d0→d1→d2→d3"]
+            PAD_LOGIC["Padding Logic<br/>Boundary detection<br/>CTU/PU existence"]
+            FLT_PIPE["Filter Pipeline<br/>Mode-dependent filtering"]
+            REF_OUT["Reference Output<br/>ref_t/r/l/d/tl [32×8b]"]
+        end
+
+        subgraph PREDICT["posi_prediction"]
+            direction TB
+            INTRA_PRED["intra_pred<br/>(shared with REC)<br/>TYPE_Y only"]
+            PRE_PIPE["3-Cycle Pipeline<br/>val_r, mode_r, size_r"]
+        end
+
+        subgraph BUFFER["posi_buffer"]
+            direction TB
+            RESIDUAL["Residual Calculation<br/>original − predicted<br/>9-bit signed"]
+            BUF_PIPE["3-Stage Pipeline<br/>d0→d1→d2"]
+            BUF_MUX["Output MUX<br/>SIZE_04: 1 block<br/>Larger: 2 blocks"]
+        end
+
+        subgraph SATD_COST["posi_satd_cost"]
+            direction TB
+            subgraph SATD_ENGINES["SATD Engines"]
+                E1["Engine 1D #0<br/>posi_satd_cost_engine"]
+                E2["Engine 1D #1<br/>posi_satd_cost_engine"]
+                E3["Engine 2D #0<br/>posi_satd_cost_engine"]
+                E4["Engine 2D #1<br/>posi_satd_cost_engine"]
+            end
+            TRANSPOSE["Transpose<br/>posi_satd_cost_transpose"]
+            SUMMATION["Summation<br/>abs → partial sum → total"]
+            RATE["Rate Estimation<br/>posi_rate_estimation"]
+        end
+
+        subgraph DECISION["posi_partition_decision"]
+            direction TB
+            BEST_MODE["Best Mode Tracker<br/>per 4×4 block"]
+            BEST_PART["Best Partition Selector<br/>85-bit output"]
+            MOD_WR["Mode Write-Back<br/>mod_wr_ena/adr/dat"]
+        end
+
+        subgraph MEM_WRAP["posi_memory_wrapper"]
+            direction TB
+            ROW_RAM["Row RAM<br/>32×8b × depth"]
+            COL_RAM["Col RAM<br/>32×8b × depth"]
+            FRA_RAM["Fra RAM<br/>32×8b × depth"]
+        end
+    end
+
+    EXTERNAL["External Interfaces<br/>Original Pixels<br/>Mode RAM<br/>Partition/Cost Output"]
+
+    CTRL -->|"start_tra_o, start_ref_o"| TRANSFER
+    CTRL -->|"start_ref_o"| REFERENCE
+    CTRL -->|"size_o, position_o"| PREDICT
+    CTRL -->|"size_o, position_o"| BUFFER
+    CTRL -->|"size_o, position_o"| SATD_COST
+    CTRL -->|"done_dec_i"| DECISION
+
+    TRANSFER -->|"row/col/fra_wr_*"| MEM_WRAP
+    REFERENCE -->|"row/col/fra_rd_*"| MEM_WRAP
+    REFERENCE -->|"ref_t/r/l/d/tl"| PREDICT
+    PREDICT -->|"dat_pre_o, val_o"| BUFFER
+    BUFFER -->|"dat_o, val_o"| SATD_COST
+    SATD_COST -->|"dat_o, val_o"| DECISION
+    DECISION -->|"done_o"| CTRL
+
+    EXTERNAL --> TRANSFER
+    EXTERNAL --> REFERENCE
+    EXTERNAL --> DECISION

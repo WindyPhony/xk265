@@ -1,0 +1,77 @@
+---
+title: xk265 DB/SAO Module Hierarchy
+---
+```mermaid
+graph TD
+    subgraph "dbsao_top (rtl/db/dbsao_top.v)"
+        CTRL["dbsao_controller<br/>FSM: 7 states<br/>9-bit counter"]
+        DP["dbsao_datapath<br/>Line buffers<br/>Block preparation<br/>128-bit P/Q pairs"]
+        BS["db_bs<br/>Boundary strength<br/>TU/PU edge detection"]
+        MV["db_mv<br/>MV read + comparison<br/>|mv_diff| > 3"]
+        FLT["db_filter<br/>Deblocking core<br/>Strong/Normal/Chroma"]
+        SAO_PRE["sao_bo_predecision<br/>BO pre-decision"]
+        SAO["sao_top<br/>EO/BO SAO"]
+    end
+
+    subgraph "db_bs internals"
+        TU["db_tu_edge<br/>TU boundaries<br/>v0-v15, h1-h7"]
+        PU["db_pu_edge<br/>PU boundaries"]
+        QP["db_qp<br/>QP mod flag"]
+        TUPU_RAM["db_tupu_ram_sp_64x32<br/>Top TU/PU buffer"]
+        CBF_RAM["db_cbf_ram_sp_64x16<br/>Top CBF buffer"]
+        QP_RAM["db_qp_ram_sp_64x20<br/>Top QP buffer"]
+    end
+
+    subgraph "db_filter internals"
+        BETA["db_lut_beta<br/>Beta LUT<br/>6→7 bits"]
+        TC["db_lut_tc<br/>tC LUT<br/>5+1→5 bits"]
+        NORM["db_normal_filter<br/>1-2 pixels/side<br/>not_nature_edge"]
+        STRONG["db_strong_filter<br/>3 pixels/side<br/>tc*2 clip"]
+        CHR["db_chroma_filter<br/>1 pixel/side<br/>INTRA only"]
+    end
+
+    subgraph "db_mv internals"
+        MV_CUR["db_mv_ram_sp_64x20<br/>Current CU MV"]
+        MV_TOP["db_mv_ram_sp_512x20<br/>Top MV buffer"]
+    end
+
+    subgraph "sao_top internals"
+        SAO_MODE["sao_mode<br/>EO/BO decision"]
+        SAO_STAT["sao_statistic<br/>Stats accumulation"]
+        SAO_CALC["sao_cal_offset<br/>Offset calculation"]
+        SAO_TYPE["sao_type_decision<br/>Type selection"]
+        SAO_DIFF["sao_sum_diff<br/>Sum/diff helper"]
+        SAO_ADD["sao_add_offset<br/>Offset application"]
+    end
+
+    CTRL --> DP
+    DP -->|"p_i, q_i, is_ver"| FLT
+    BS -->|"tu_edge, pu_edge,<br/>qp_p, qp_q,<br/>cbf_p, cbf_q"| FLT
+    MV -->|"mv_p, mv_q"| FLT
+    DP -->|"rec_line_i_0..5,<br/>ori_line_i_0..3"| SAO
+    SAO_PRE -->|"bo_predecision"| SAO
+    SAO -->|"sao_block_o"| DP
+
+    BS --> TU
+    BS --> PU
+    BS --> QP
+    BS --> TUPU_RAM
+    BS --> CBF_RAM
+    BS --> QP_RAM
+
+    FLT --> BETA
+    FLT --> TC
+    FLT --> NORM
+    FLT --> STRONG
+    FLT --> CHR
+
+    MV --> MV_CUR
+    MV --> MV_TOP
+
+    SAO --> SAO_MODE
+    SAO --> SAO_STAT
+    SAO --> SAO_CALC
+    SAO --> SAO_TYPE
+    SAO --> SAO_DIFF
+    SAO --> SAO_ADD
+```

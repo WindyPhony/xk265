@@ -1,0 +1,152 @@
+%%{ init: { "theme": "default", "themeVariables": { "fontSize": "13px" } } }%%
+graph TD
+    subgraph "h265enc_top (enc_top.v)"
+        direction TB
+
+        subgraph "System Controller"
+            CTRL["<b>enc_ctrl</b><br/>12-state Pipeline FSM<br/>enc_ctrl.v<br/><i>Start/Done, CTU addressing,<br/>Fetch enable, Pipeline control</i>"]
+        end
+
+        subgraph "Memory Interface"
+            FETCH["<b>fetch_top</b><br/>Shared Memory Interface<br/>fetch_top.v<br/><i>External SDRAM via ext_if<br/>Line buffers for all data types<br/>Pixel distribution to all subsystems</i>"]
+            EXT["<b>External SDRAM</b><br/>ext_if: 128-bit data bus<br/>start/done/mode/x/y"]
+        end
+
+        subgraph "Computational Pipeline (enc_core)"
+            direction TB
+
+            subgraph "Stage 1: Mode Decision"
+                PREI["<b>prei_top_buf</b><br/>Pre-Intra + Rate Control<br/>prei_top.v<br/><i>Mode decision, QP,<br/>intra_partition (85b)</i>"]
+                MODE_RAM["<b>Mode RAM</b><br/>Shared by PREI/POSI/CABAC"]
+            end
+
+            subgraph "Stage 2: Cost Evaluation"
+                POSI["<b>posi_top_buf</b><br/>SATD + Mode Selection<br/>posi_top.v<br/><i>SATD cost, best intra mode</i>"]
+                IME["<b>ime_top_buf</b><br/>Integer Motion Estimation<br/>ime_top.v<br/><i>Diamond search, configurable<br/>center/range/slope</i>"]
+            end
+
+            subgraph "Stage 3: Refinement"
+                FME["<b>fme_top_buf</b><br/>Fractional ME + MC<br/>fme_top.v<br/><i>Sub-pel interpolation,<br/>MC prediction, skip detection</i>"]
+            end
+
+            subgraph "Stage 4: Reconstruction"
+                REC["<b>rec_top</b><br/>Reconstruction<br/>rec_top.v<br/><i>Intra pred, MC, Fwd/Inv TQ,<br/>Quantization, Reconstruct</i>"]
+                REC_BUF["<b>rec_buf_wrapper</b><br/>Rotating Buffers<br/><i>rec_rot: rec pixels<br/>cef_rot: coefficients<br/>mvd_rot: motion vectors</i>"]
+            end
+
+            subgraph "Stage 5: Filtering"
+                DB["<b>dbsao_top</b><br/>Deblocking + SAO<br/>dbsao_top.v<br/><i>Boundary strength,<br/>filter, SAO offset</i>"]
+            end
+
+            subgraph "Stage 6: Entropy Coding"
+                CABAC["<b>cabac_top</b><br/>CABAC Entropy Coding<br/>cabac_top.v<br/><i>4-way parallel pipeline,<br/>Context modeling, Arithmetic coding</i>"]
+            end
+
+            PIPE["<b>enc_data_pipeline</b><br/>Metadata Pipeline<br/>enc_data_pipeline.v<br/><i>QP, partitions, CBF,<br/>skip, IinP flag</i>"]
+        end
+    end
+
+    subgraph "Control Flow"
+        direction TB
+        START["sys_start_i"]
+        DONE["sys_done_o"]
+        BS["bs_data_o[7:0]<br/>bs_val_o"]
+    end
+
+    subgraph "Data Flow Summary"
+        direction TB
+        LOAD_CUR["load_cur_luma/chroma<br/>load_ref_luma/chroma"]
+        STORE_DB["store_db_luma/chroma"]
+    end
+
+    %% Control connections
+    CTRL -->|"enc_start_o"| FETCH
+    CTRL -->|"prei_start_o"| PREI
+    CTRL -->|"posi_start_o"| POSI
+    CTRL -->|"ime_start_o"| IME
+    CTRL -->|"fme_start_o"| FME
+    CTRL -->|"rec_start_o"| REC
+    CTRL -->|"db_start_o"| DB
+    CTRL -->|"ec_start_o"| CABAC
+    CTRL -->|"store_db_start_o"| DB
+    START --> CTRL
+    CTRL -->|"sys_done_o"| DONE
+
+    %% Fetch control
+    CTRL -->|"load/store enables<br/>x,y addresses"| FETCH
+    FETCH <-->|"ext_if 128b"| EXT
+
+    %% Pixel data: FETCH to all subsystems
+    FETCH -->|"cur pixels"| PREI
+    FETCH -->|"cur pixels"| POSI
+    FETCH -->|"cur + ref pixels"| IME
+    FETCH -->|"cur + ref pixels"| FME
+    FETCH -->|"cur + ref pixels"| REC
+    FETCH -->|"cur pixels + top ref"| DB
+
+    %% Mode RAM: PREI writes, POSI/CABAC read
+    PREI -->|"mode data"| MODE_RAM
+    MODE_RAM -->|"mode data"| POSI
+    MODE_RAM -->|"mode data"| CABAC
+
+    %% IME -> FME: MV data
+    IME -->|"ime_mv_dump<br/>inter_partition"| FME
+
+    %% FME -> REC: MC prediction + MVs
+    FME -->|"mc_pred_rd<br/>fme_mv_rd"| REC
+
+    %% FME -> DB: MVs for deblocking
+    FME -->|"db_mv_rd"| DB
+
+    %% REC -> DB: rec pixels
+    REC -->|"rec_rd"| DB
+    DB -->|"rec_wr<br/>(filtered pixels)"| REC
+
+    %% REC -> CABAC: coefficients + MVD
+    REC -->|"cef_rd<br/>(coefficients)"| CABAC
+    REC -->|"mvd_rd"| CABAC
+
+    %% DB -> CABAC: SAO data
+    DB -->|"sao_data (62b)"| CABAC
+
+    %% DB -> FETCH: filtered pixels
+    DB -->|"fetch_w<br/>(filtered pixels)"| FETCH
+
+    %% CABAC -> output
+    CABAC --> BS
+
+    %% Metadata pipeline
+    PREI -- "intra_partition" --> PIPE
+    IME -- "inter_partition" --> PIPE
+    FME -- "skip_idx, skip_flag" --> PIPE
+    REC -- "cbf, IinP_flag" --> PIPE
+    PIPE -- "QP, partition, cbf,<br/>skip, IinP -> DB/CABAC" --> DB
+    PIPE -- "" --> CABAC
+    CABAC -- "rc_actual_bitnum" --> PIPE
+    PIPE -- "" --> PREI
+
+    %% Style: Controller
+    style CTRL fill:#1a73e8,color:#fff,stroke:#1557b0,stroke-width:2px
+
+    %% Style: Memory
+    style FETCH fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:2px
+    style EXT fill:#666,color:#fff,stroke:#444,stroke-width:2px
+
+    %% Style: Pipeline stages
+    style PREI fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style MODE_RAM fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style POSI fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style IME fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:2px
+    style FME fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:2px
+    style REC fill:#9c27b0,color:#fff,stroke:#8e24aa,stroke-width:2px
+    style REC_BUF fill:#ce93d8,color:#000,stroke:#ba68c8,stroke-width:2px
+    style DB fill:#ff9800,color:#000,stroke:#f57c00,stroke-width:2px
+    style CABAC fill:#00bcd4,color:#fff,stroke:#0097a7,stroke-width:2px
+    style PIPE fill:#607d8b,color:#fff,stroke:#546e7a,stroke-width:2px
+
+    %% Style: Control
+    style START fill:none,stroke:#333,stroke-width:1px
+    style DONE fill:none,stroke:#333,stroke-width:1px
+    style BS fill:none,stroke:#333,stroke-width:1px
+    style LOAD_CUR fill:none,stroke:#333,stroke-width:1px
+    style STORE_DB fill:none,stroke:#333,stroke-width:1px

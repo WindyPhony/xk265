@@ -1,0 +1,117 @@
+---
+title: FETCH Module Hierarchy
+created: 2026-09-04
+status: DRAFT
+---
+flowchart TB
+    subgraph FETCH_TOP["fetch_top (fetch_top.v)"]
+        direction TB
+
+        subgraph WRAPPER["fetch_wrapper (fetch_wrapper.v)"]
+            direction TB
+            FSM["10-State FSM<br/>IDLE→LOAD_CUR_LUMA→<br/>LOAD_REF_LUMA→LOAD_CUR_CHROMA→<br/>LOAD_REF_CHROMA→LOAD_DB_LUMA→<br/>LOAD_DB_CHROMA→STORE_DB_LUMA→<br/>STORE_DB_CHROMA→IDLE"]
+            DB_FSM["DB Store Sub-FSM<br/>5 states: IDLE→LUMA_PRE→<br/>LUMA_CUR→CHRO_PRE→CHRO_CUR"]
+            SHIFT_REG["Data Shift Register<br/>extif_data_0..6<br/>(7× 128-bit)"]
+            CHROMA_DEINT["NV12 De-interleaving<br/>U/V extraction"]
+            ADDR_GEN["Address Generation<br/>extif_x/y/width/height"]
+        end
+
+        subgraph CUR_LUMA["fetch_cur_luma (fetch_cur_luma.v)"]
+            direction TB
+            ROT_I["rotate_i (3-bit, 0-4)<br/>5-way INTRA rotation"]
+            ROT_P["rotate_p (2-bit, 0-2)<br/>3-way INTER rotation"]
+            ROT_IME["rotate_ime (1-bit, 0-1)<br/>2-way IME rotation"]
+            subgraph MEM_I["INTRA Buffers"]
+                I0["cur_i00<br/>mem_lipo_1p_128x64x4"]
+                I1["cur_i01<br/>mem_lipo_1p_128x64x4"]
+                I2["cur_i02<br/>mem_lipo_1p_128x64x4"]
+                I3["cur_i03<br/>mem_lipo_1p_128x64x4"]
+                I4["cur_i04<br/>mem_lipo_1p_128x64x4"]
+            end
+            subgraph MEM_P["INTER Buffers"]
+                P0["cur_p00<br/>mem_lipo_1p_128x64x4"]
+                P1["cur_p01<br/>mem_lipo_1p_128x64x4"]
+                P2["cur_p02<br/>mem_lipo_1p_128x64x4"]
+            end
+            subgraph MEM_IME["IME Current Buffers"]
+                IM0["cur_ime00<br/>mem_lipo_1p_128x64x4"]
+                IM1["cur_ime01<br/>mem_lipo_1p_128x64x4"]
+            end
+        end
+
+        subgraph REF_LUMA["fetch_ref_luma (fetch_ref_luma.v)"]
+            direction TB
+            ROT_RI["rotate_ime (2-bit, 0-3)<br/>4-way IME rotation"]
+            ROT_RF["rotate_fme (3-bit, 0-4)<br/>5-way FME rotation"]
+            subgraph RIME["IME Reference Buffers"]
+                RI0["ref_luma_ime00<br/>fetch_rf_1p_128x512"]
+                RI1["ref_luma_ime01<br/>fetch_rf_1p_128x512"]
+                RI2["ref_luma_ime02<br/>fetch_rf_1p_128x512"]
+                RI3["ref_luma_ime03<br/>fetch_rf_1p_128x512"]
+            end
+            subgraph RFME["FME Reference Buffers"]
+                RF0["ref_luma_fme00<br/>fetch_rf_1p_128x512"]
+                RF1["ref_luma_fme01<br/>fetch_rf_1p_128x512"]
+                RF2["ref_luma_fme02<br/>fetch_rf_1p_128x512"]
+                RF3["ref_luma_fme03<br/>fetch_rf_1p_128x512"]
+                RF4["ref_luma_fme04<br/>fetch_rf_1p_128x512"]
+            end
+            BOUNDARY["Boundary Handling<br/>Left/Right/Top edge<br/>+ Downsample"]
+        end
+
+        subgraph CUR_CHROMA["fetch_cur_chroma (fetch_cur_chroma.v)"]
+            ROT_C["rotate (2-bit, 0-2)<br/>3-way rotation"]
+            subgraph CMEM["Chroma Buffers"]
+                C0["cur00<br/>mem_lipo_1p_64x64x4"]
+                C1["cur01<br/>mem_lipo_1p_64x64x4"]
+                C2["cur02<br/>mem_lipo_1p_64x64x4"]
+            end
+        end
+
+        subgraph REF_CHROMA["fetch_ref_chroma (fetch_ref_chroma.v)"]
+            ROT_RC["rotate_rec (2-bit, 0-3)<br/>4-way rotation"]
+            subgraph RU["Reference U Buffers"]
+                RU0["ref_u_rec00<br/>fetch_rf_1p_64x256"]
+                RU1["ref_u_rec01<br/>fetch_rf_1p_64x256"]
+                RU2["ref_u_rec02<br/>fetch_rf_1p_64x256"]
+                RU3["ref_u_rec03<br/>fetch_rf_1p_64x256"]
+            end
+            subgraph RV["Reference V Buffers"]
+                RV0["ref_v_rec00<br/>fetch_rf_1p_64x256"]
+                RV1["ref_v_rec01<br/>fetch_rf_1p_64x256"]
+                RV2["ref_v_rec02<br/>fetch_rf_1p_64x256"]
+                RV3["ref_v_rec03<br/>fetch_rf_1p_64x256"]
+            end
+            UV_MUX["UV MUX<br/>rec_ref_sel_i"]
+        end
+
+        subgraph DB_BUF["fetch_db (fetch_db.v)"]
+            direction TB
+            WR_ROT["wr_rotate (2-bit, 0-2)<br/>3-way write rotation"]
+            RD_ROT["rd_rotate (2-bit, 0-2)<br/>3-way read rotation"]
+            REC_BUF["rec_buf (1-bit)<br/>2-way rec rotation"]
+            subgraph STORE_BUF["Store Triple-Buffer"]
+                DB0["u_db_buf0<br/>mem_bilo_db"]
+                DB1["u_db_buf1<br/>mem_bilo_db"]
+                DB2["u_db_buf2<br/>mem_bilo_db"]
+            end
+            subgraph REC_BUF_MEM["Rec Buffers"]
+                RB0["fetch_ram_1p_128x32_0"]
+                RB1["fetch_ram_1p_128x32_1"]
+            end
+        end
+
+        LUMA_CHROMA_MUX["Luma/Chroma MUX<br/>rec_cur_sel_i[1]<br/>db_cur_sel_i[1]"]
+    end
+
+    EXT_MEM["External Memory<br/>(DPB + Frame Buffer)"]
+    ENCODER["Pipeline Stages<br/>PREI / POSI / IME<br/>FME / REC / DB"]
+
+    WRAPPER --> EXT_MEM
+    CUR_LUMA --> ENCODER
+    REF_LUMA --> ENCODER
+    CUR_CHROMA --> ENCODER
+    REF_CHROMA --> ENCODER
+    DB_BUF --> EXT_MEM
+    DB_BUF --> ENCODER
+    LUMA_CHROMA_MUX --> ENCODER

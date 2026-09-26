@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="820" viewBox="0 0 1240 820">
+<rect width="1240" height="820" fill="white"/>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#444"/></marker></defs>
+<style>text{font-family:Arial,sans-serif;fill:#222;font-size:20px}.wire{fill:none;stroke:#555;stroke-width:2}.shape{fill:white;stroke:#555;stroke-width:2}.small{font-size:16px}</style>
+<text x="35" y="38" font-size="24">fetch8x8 — blockcnt[6:0]</text>
+<!-- Main datapath -->
+<polygon class="shape" points="260,145 325,190 325,310 260,355"/>
+<polygon class="shape" points="535,195 600,240 600,360 535,405"/>
+<path class="wire" d="M325 250 H535 M600 300 H785" marker-end="url(#arrow)"/>
+<rect class="shape" x="785" y="235" width="220" height="235"/>
+<text x="895" y="326" text-anchor="middle">blockcnt[6:0]</text>
+<text x="895" y="355" text-anchor="middle" class="small">7-bit DFF</text>
+<text x="895" y="379" text-anchor="middle" class="small">reset = 0</text>
+<path class="wire" d="M1005 340 H1200" marker-end="url(#arrow)"/>
+<text x="1060" y="322">blockcnt[6:0]</text>
+<!-- Common Q feedback splits into hold and increment branches -->
+<path class="wire" d="M1050 340 V85 H85 V490 H420 V350 H535 M85 195 H260"/>
+<circle cx="1050" cy="340" r="3" fill="#555"/><circle cx="85" cy="195" r="3" fill="#555"/>
+<text x="134" y="181">blockcnt</text>
+<text x="438" y="334" class="small">blockcnt + 1</text>
+<text x="110" y="477" class="small">Q feedback to 7-bit increment expression</text>
+<path class="wire" d="M175 305 H260"/><text x="175" y="292">7'd0</text>
+<text x="274" y="202">0</text><text x="274" y="313">1</text>
+<text x="549" y="258">0</text><text x="549" y="363">1</text>
+<!-- First mux: finish selects zero; second mux: increment has priority -->
+<path class="wire" d="M292.5 332.5 V435"/><text x="266" y="460">finish</text>
+<ellipse class="shape" cx="240" cy="590" rx="110" ry="44"/>
+<text x="240" y="597" text-anchor="middle">cnt == 32</text>
+<text x="130" y="535" class="small">cnt: shared cycle counter</text>
+<path class="shape" d="M435 554 H465 A54 76 0 0 1 465 706 H435 Z"/>
+<path class="wire" d="M350 590 H435 M350 672 H435 M519 630 H567.5 V382.5"/>
+<text x="257" y="664">enable</text>
+<!-- Explicit clock and reset -->
+<path class="wire" d="M700 423 H785 M785 411 L802 423 L785 435"/>
+<text x="700" y="410">clk</text>
+<circle class="shape" cx="895" cy="475" r="5"/>
+<path class="wire" d="M895 480 V548 H800"/>
+<text x="800" y="577">rstn</text><text x="800" y="600" class="small">asynchronous active-low</text>
+<text x="35" y="758" class="small">Priority: reset → increment when enable &amp;&amp; cnt == 32 → clear when finish → hold.</text>
+<text x="35" y="786" class="small">If increment and finish are both asserted, blockcnt increments. All conditions use pre-edge state.</text>
+</svg>

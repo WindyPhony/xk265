@@ -1,0 +1,64 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '14px' }}}%%
+graph TD
+    subgraph fme_top["fme_top (fme_top.v)"]
+        direction TB
+
+        ctrl["fme_ctrl<br/><i>fme_ctrl.v</i>"]
+
+        subgraph interp["Interpolation Pipeline"]
+            direction TB
+            ip8x8["fme_interpolator_8x8<br/><i>fme_interpolator_8x8.v</i>"]
+            ip8pel["fme_interpolator_8pel<br/><i>fme_interpolator_8pel.v</i>"]
+            ip_half_ver["fme_ip_half_ver<br/><i>fme_ip_half_ver.v</i>"]
+            ip_quarter_ver["fme_ip_quarter_ver<br/><i>fme_ip_quarter_ver.v</i>"]
+            ip_prim["fme_interpolator<br/><i>fme_interpolator.v</i>"]
+        end
+
+        subgraph cost_engine["Cost Engine"]
+            direction TB
+            satd_gen["fme_satd_gen<br/><i>fme_satd_gen.v</i>"]
+            satd_8x8["fme_satd_8x8 ×9<br/><i>fme_satd_8x8.v</i>"]
+            fme_cost["fme_cost<br/><i>fme_cost.v</i>"]
+            cost_ram["db_mv_ram_sp_64x20<br/><i>fme_top.v:639</i>"]
+        end
+
+        subgraph mv_system["MV System"]
+            direction TB
+            mv_buf["fme_mv_buffer<br/><i>fme_mv_buffer.v</i>"]
+            mv_candi["fme_mv_candidate_prepare<br/><i>fme_mv_candidate_prepare.v</i>"]
+            skip["fme_skip<br/><i>fme_skip.v</i>"]
+        end
+
+        fme_pred["fme_pred<br/><i>fme_pred.v</i>"]
+        lambda["qp_lambda_table<br/><i>qp_lambda_table.v</i>"]
+    end
+
+    ctrl -->|"ip_start, mv, frac"| ip8x8
+    ip8x8 --> ip8pel
+    ip8x8 --> ip_half_ver
+    ip8x8 --> ip_quarter_ver
+    ip8pel --> ip_prim
+    ip_half_ver --> ip_prim
+    ip_quarter_ver --> ip_prim
+
+    ip8x8 -->|"candi pixel[0..8]"| satd_gen
+    ctrl -->|"cur pixel addr"| satd_gen
+    satd_gen --> satd_8x8
+    satd_gen -->|"satd[0..8]"| fme_cost
+    fme_cost --> cost_ram
+    fme_cost -->|"cost_done"| ctrl
+
+    ctrl -->|"skip_start"| skip
+    skip -->|"fmv_wr"| mv_buf
+    mv_candi -->|"mv candidates"| skip
+    mv_buf -->|"lft_mv, top_mv"| mv_candi
+
+    fme_pred -->|"pred_pixel"| ctrl
+    lambda -->|"lambda"| fme_cost
+
+    ctrl -->|"imv_read"| ext_ime["← IME"]
+    ctrl -->|"ref_addr"| ext_ref["→ Ref SRAM"]
+    ctrl -->|"cur_addr"| ext_cur["→ Cur SRAM"]
+    ctrl -->|"fmv_wr"| ext_mv["→ MV SRAM"]
+    fme_cost -->|"fme_cost_o"| ext_cost["→ System"]
+    skip -->|"skip_idx, skip_flg"| ext_skip["→ System"]

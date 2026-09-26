@@ -1,0 +1,8 @@
+%% Native Mermaid approximates vertical mux geometry. [V]=VERIFIED, [I]=INFERRED.
+flowchart LR
+  C["cyclecnt[5:0]<br/>shared counter [V]"] --> CMP(["== 6'd40 [V]"])
+  CMP -->|D| Q["newblock<br/>DFF reset 0 [V]"]
+  Q --> O(["newblock"])
+  CLK["clk"] -.->|posedge| Q
+  RST["rstn"] -.->|"async active-low reset"| Q
+  classDef default fill:#fff,stroke:#555,color:#111;

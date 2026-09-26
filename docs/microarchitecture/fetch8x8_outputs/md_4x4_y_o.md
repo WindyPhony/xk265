@@ -1,0 +1,22 @@
+# md_4x4_y_o
+
+{blockcnt[5], blockcnt[3], blockcnt[1], 1'b0}; wiring only.
+
+![md_4x4_y_o](md_4x4_y_o.svg)
+
+[SVG](md_4x4_y_o.svg) · [Mermaid](md_4x4_y_o.mmd)
+
+<details>
+<summary>Mermaid source and preview</summary>
+
+```mermaid
+flowchart LR
+B["blockcnt[6:0]<br/>shared counter output"] -->|"blockcnt[5]"| PACK["Concatenate / wiring only<br/>{blockcnt[5], blockcnt[3], blockcnt[1], 1'b0}"]
+  B -->|"blockcnt[3]"| PACK
+  B -->|"blockcnt[1]"| PACK
+  ZERO["1'b0"] -->|"bit 0"| PACK
+  PACK --> O(["md_4x4_y_o[3:0]"])
+  classDef default fill:#fff,stroke:#555,color:#111;
+```
+
+</details>

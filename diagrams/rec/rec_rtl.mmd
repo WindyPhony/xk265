@@ -1,0 +1,124 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '13px' }}}%%
+graph LR
+    subgraph "External Interfaces"
+        start_i["start_i<br/>type_i<br/>qp_i<br/>partition_i"]
+        cur_rd["cur_rd_*<br/><i>Current Block</i>"]
+        mv_rd["mv_rd_*<br/><i>Motion Vectors</i>"]
+        ref_rd["ref_rd_*<br/><i>Reference Pixels</i>"]
+        fme_rd["pre_fme_rd_*<br/><i>FME Prediction</i>"]
+        md_rd["md_rd_*<br/><i>Mode Decision</i>"]
+        rec_out["rec_rd_* / rec_wr_*<br/><i>Reconstructed</i>"]
+        cef_out["cef_rd_*<br/><i>Coefficients</i>"]
+        mvd_out["mvd_rd_*<br/><i>MVD Output</i>"]
+        cbf_out["cbf_y_o / cbf_u_o / cbf_v_o<br/><i>256b each</i>"]
+        IinP_out["IinP_flag_o<br/>fme_IinP_flag_o"]
+    end
+
+    subgraph "rec_top FSM"
+        type_r{{"type_r<br/>0=INTRA, 1=INTER"}}
+        start_r{{"start_r"}}
+        res_wr_r{{"res_wr_val_r<br/>res_wr_sel_r<br/>res_wr_siz_r<br/>res_wr_dat_r<br/><i>[287:0]</i>"}}
+    end
+
+    subgraph "Intra Path"
+        intra_top["intra_top"]
+        intra_pre_wr["intra_pre_wr_*<br/><i>Prediction Write</i>"]
+        intra_rec_wr["intra_rec_wr_*<br/><i>Rec Write Back</i>"]
+    end
+
+    subgraph "Inter Path"
+        mc_top["mc_top"]
+        mc_ctrl_FSM{{"mc_ctrl FSM<br/>IDLE→TQ_LUMA→MC_CB→TQ_CB→MC_CR→TQ_CR→DONE"}}
+        mc_tq_FSM{{"mc_tq FSM<br/>IDLE→TRAN→WAIT"}}
+        mvd_top_block["mvd_top"]
+        mc_chroma["mc_chroma_top"]
+        inter_pre_wr["inter_pre_wr_*<br/><i>Prediction Write</i>"]
+        mvd_wr["mvd_wr_*<br/><i>MVD Write</i>"]
+    end
+
+    subgraph "TQ Engine"
+        tq_top_block["tq_top"]
+        dct_fwd["dct_top_2d<br/><i>Forward DCT</i><br/>i_inverse=0"]
+        q_fwd["q_iq<br/><i>Forward Quant</i><br/>inverse=0"]
+        cef_wr["cef_wen_o<br/>cef_widx_o [4:0]<br/>cef_data_o [511:0]"]
+        cef_rd_block["cef_ren_o<br/>cef_ridx_o [4:0]<br/>cef_data_i [511:0]"]
+        q_inv["q_iq<br/><i>Inverse Dequant</i><br/>inverse=1"]
+        dct_inv["dct_top_2d<br/><i>Inverse IDCT</i><br/>i_inverse=1"]
+        rec_out_block["rec_val_o<br/>rec_idx_o [4:0]<br/>rec_data_o [319:0]<br/><i>32×10-bit</i>"]
+    end
+
+    subgraph "Buffer Hub"
+        buf_wrapper["rec_buf_wrapper"]
+        pre_buf[["rec_buf_pre<br/><i>256b</i><br/>4 SRAM banks"]]
+        rec_rot[["rec_buf_rec_rot<br/><i>Double Buffer</i>"]]
+        cef_rot[["rec_buf_cef_rot<br/><i>Double Buffer</i>"]]
+        mvd_rot[["rec_buf_mvd_rot<br/><i>Triple Buffer</i>"]]
+    end
+
+    subgraph "I-in-P"
+        IinP_gen["IinP_flag_gen<br/><i>Shift Register</i>"]
+    end
+
+    start_i --> type_r
+    start_i --> start_r
+    type_r -->|"INTRA"| intra_top
+    type_r -->|"INTER"| mc_top
+
+    intra_top --> intra_pre_wr
+    intra_top -.->|"rec_done_i"| intra_rec_wr
+    intra_pre_wr --> buf_wrapper
+    intra_rec_wr --> buf_wrapper
+
+    mc_top --> mc_ctrl_FSM
+    mc_top --> mc_tq_FSM
+    mc_top --> mvd_top_block
+    mc_top --> mc_chroma
+    mc_tq_FSM -.->|"fme_rd_*"| fme_rd
+    mc_tq_FSM --> inter_pre_wr
+    mvd_top_block -->|"mvd_wr_*"| mvd_wr
+    mvd_top_block -.->|"mv_rd_*"| mv_rd
+    mc_chroma -.->|"ref_rd_*"| ref_rd
+    inter_pre_wr --> buf_wrapper
+    mvd_wr --> buf_wrapper
+
+    start_r -->|"res_wr_val_r"| res_wr_r
+    res_wr_r --> tq_top_block
+    tq_top_block --> dct_fwd --> q_fwd --> cef_wr
+    cef_wr --> buf_wrapper
+    cef_rd_block --> buf_wrapper
+    cef_rd_block --> q_inv --> dct_inv --> rec_out_block
+    rec_out_block --> buf_wrapper
+
+    buf_wrapper --> pre_buf
+    buf_wrapper --> rec_rot
+    buf_wrapper --> cef_rot
+    buf_wrapper --> mvd_rot
+
+    pre_buf -.->|"res [287:0]"| res_wr_r
+    cef_rot -.->|"cef_data [511:0]"| cef_rd_block
+    rec_rot -.->|"rec_rd_*"| rec_out
+    cef_rot -.->|"cef_rd_*"| cef_out
+    mvd_rot -.->|"mvd_rd_*"| mvd_out
+    rec_rot -.->|"cbf_*"| cbf_out
+    cur_rd -.->|"cur_rd_*"| buf_wrapper
+    md_rd -.->|"md_rd_*"| intra_top
+
+    IinP_gen -.-> IinP_out
+
+    type_r -.-> IinP_gen
+    start_r -.-> IinP_gen
+
+    style rec_top fill:#e8f4f8,stroke:#2c3e50,stroke-width:2px
+    style intra_top fill:#d5e8d4,stroke:#82b366,stroke-width:2px
+    style mc_top fill:#d5e8d4,stroke:#82b366,stroke-width:2px
+    style tq_top_block fill:#fff2cc,stroke:#d6b656,stroke-width:2px
+    style buf_wrapper fill:#f8cecc,stroke:#b85450,stroke-width:2px
+    style IinP_gen fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
+    style dct_fwd fill:#fff2cc,stroke:#d6b656
+    style dct_inv fill:#fff2cc,stroke:#d6b656
+    style q_fwd fill:#fff2cc,stroke:#d6b656
+    style q_inv fill:#fff2cc,stroke:#d6b656
+    style pre_buf fill:#f8cecc,stroke:#b85450
+    style rec_rot fill:#f8cecc,stroke:#b85450
+    style cef_rot fill:#f8cecc,stroke:#b85450
+    style mvd_rot fill:#f8cecc,stroke:#b85450

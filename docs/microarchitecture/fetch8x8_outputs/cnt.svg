@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="750" viewBox="0 0 1200 750">
+<rect width="1200" height="750" fill="white"/>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#444"/></marker></defs>
+<style>text{font-family:Arial,sans-serif;fill:#222;font-size:20px}.wire{fill:none;stroke:#555;stroke-width:2}.shape{fill:white;stroke:#555;stroke-width:2}.small{font-size:16px}</style>
+<text x="35" y="38" font-size="24">fetch8x8 — cnt[5:0]</text>
+<!-- Main spine: enable mux, clear mux, register, output -->
+<polygon class="shape" points="260,145 325,190 325,310 260,355"/>
+<polygon class="shape" points="535,195 600,240 600,360 535,405"/>
+<path class="wire" d="M325 250 H535 M600 300 H785" marker-end="url(#arrow)"/>
+<rect class="shape" x="785" y="235" width="200" height="235"/>
+<text x="885" y="326" text-anchor="middle">cnt[5:0]</text>
+<text x="885" y="355" text-anchor="middle" class="small">6-bit DFF</text>
+<text x="885" y="379" text-anchor="middle" class="small">reset = 0</text>
+<path class="wire" d="M985 340 H1150" marker-end="url(#arrow)"/>
+<text x="1060" y="322">cnt[5:0]</text>
+<!-- Q feedback and abstract arithmetic branch -->
+<path class="wire" d="M1050 340 V85 H85 V305 H260 M85 195 H260"/>
+<circle cx="1050" cy="340" r="3" fill="#555"/><circle cx="85" cy="195" r="3" fill="#555"/>
+<text x="160" y="183">cnt</text><text x="137" y="292">cnt + 1</text>
+<text x="274" y="202">0</text><text x="274" y="313">1</text>
+<text x="549" y="258">0</text><text x="549" y="363">1</text>
+<path class="wire" d="M292.5 332.5 V435"/><text x="210" y="460">enable</text>
+<path class="wire" d="M440 350 H535"/><text x="440" y="337">6'd0</text>
+<!-- Clear control: named cnt predicate with OR -->
+<ellipse class="shape" cx="245" cy="558" rx="110" ry="44"/>
+<text x="245" y="565" text-anchor="middle">cnt == 40</text>
+<path class="shape" d="M435 530 Q480 608 435 686 Q542 680 545 608 Q536 541 435 530Z"/>
+<path class="wire" d="M355 558 H449 M355 658 H449 M545 608 H567.5 V382.5"/>
+<text x="270" y="651">finish</text>
+<!-- Clock and asynchronous active-low reset -->
+<path class="wire" d="M700 423 H785 M785 411 L802 423 L785 435"/>
+<text x="700" y="410">clk</text>
+<circle class="shape" cx="885" cy="475" r="5"/>
+<path class="wire" d="M885 480 V548 H790"/>
+<text x="790" y="577">rstn</text><text x="790" y="600" class="small">asynchronous active-low</text>
+<text x="35" y="722" class="small">cnt + 1 denotes a 6-bit incrementer; comparator and feedback use the same pre-edge cnt value.</text>
+</svg>

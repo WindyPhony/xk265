@@ -1,0 +1,15 @@
+%% Native Mermaid approximates vertical mux geometry. [V]=VERIFIED, [I]=INFERRED.
+flowchart LR
+  M1[/"MUX [I]"\] -->|0| M2[/"MUX [I]"\]
+  M2 -->|D| Q["cyclecnt[5:0]<br/>DFF reset 0 [V]"]
+  Q --> O(["cyclecnt[5:0]"])
+  Q -->|"0: hold"| M1
+  Q -->|"1: cyclecnt + 1"| M1
+  Z2["6'd0"] -->|1| M2
+  S1(["enable"]) -.->|select| M1
+  C0(["cyclecnt == 40"]) -.-> G["OR [I]"]
+  C1(["finish"]) -.-> G["OR [I]"]
+  G -.->|select| M2
+  CLK["clk"] -.->|posedge| Q
+  RST["rstn"] -.->|"async active-low reset"| Q
+  classDef default fill:#fff,stroke:#555,color:#111;

@@ -1,0 +1,131 @@
+---
+title: xk265 RTL System Architecture — Final Integration
+---
+flowchart LR
+    subgraph h265enc_top["h265enc_top (enc_top.v)"]
+        direction TB
+
+        subgraph PIPELINE_CTRL["Pipeline Control"]
+            enc_ctrl["enc_ctrl<br/>(12-state FSM)"]
+        end
+
+        subgraph FETCH_HUB["Data Fetch Hub"]
+            fetch_top["fetch_top<br/>(6 submodules)"]
+        end
+
+        subgraph STAGE_0["Stage 0 – Data Fetch"]
+            PIXEL_IN["Pixels In<br/>(cur YUV)"]
+        end
+
+        subgraph STAGE_1["Stage 1 – PREI + IME"]
+            direction TB
+            prei_top_buf["prei_top_buf"]
+            ime_top_buf["ime_top_buf"]
+        end
+
+        subgraph STAGE_2["Stage 2 – Post-SATD + FME"]
+            direction TB
+            posi_top_buf["posi_top_buf"]
+            fme_top_buf["fme_top_buf"]
+        end
+
+        subgraph STAGE_3["Stage 3 – Reconstruction"]
+            rec_top["rec_top<br/>(intra + MC + TQ)"]
+        end
+
+        subgraph STAGE_4["Stage 4 – Deblocking + SAO"]
+            dibao_top["dbsao_top"]
+        end
+
+        subgraph STAGE_5["Stage 5 – Entropy Coding"]
+            direction TB
+            cabac_top["cabac_top"]
+            enc_data_pipeline["enc_data_pipeline<br/>(QP, partition, CBF, skip)"]
+        end
+    end
+
+    EXT_MEM["External Memory<br/>(SDRAM/DPB)"]
+    BITSTREAM["Bitstream Output<br/>(16b)"]
+
+    %% Pipeline Control → fetch_top (vertical)
+    enc_ctrl -- "fetch_done" --> fetch_top
+
+    %% External Memory ↔ fetch_top
+    fetch_top -- "128b ext bus" --> EXT_MEM
+
+    %% Pixels In → fetch_top → Stage 0
+    PIXEL_IN --> fetch_top
+
+    %% Stage 0 → Stage 1
+    fetch_top -- "256b luma" --> prei_top_buf
+    fetch_top -- "256b luma" --> ime_top_buf
+
+    %% Stage 1 internal
+    prei_top_buf -- "6b modes (ping-pong)" --> ime_top_buf
+
+    %% Stage 1 → Stage 2
+    prei_top_buf -- "6b modes (ping-pong)" --> posi_top_buf
+    ime_top_buf -- "20b MVs (ping-pong)" --> fme_top_buf
+    ime_top_buf -- "42b partition" --> enc_data_pipeline
+
+    %% Stage 2 → Stage 3
+    fme_top_buf -- "20b MVs (triple)" --> rec_top
+    fme_top_buf -- "256b MC pred" --> rec_top
+    posi_top_buf -- "85b partition, 20b cost" --> enc_data_pipeline
+
+    %% enc_data_pipeline → rec_top
+    enc_data_pipeline -- "QP, CBF, partition, skip" --> rec_top
+
+    %% Stage 3 → Stage 4
+    rec_top -- "256b rec pixels" --> dibao_top
+    rec_top -- "256b CBF Y/U/V" --> enc_data_pipeline
+
+    %% Stage 3 → Stage 5
+    rec_top -- "128b coefficients" --> cabac_top
+
+    %% Stage 4 → Stage 5
+    dibao_top -- "62b SAO params" --> cabac_top
+
+    %% Stage 4 feedback to fetch
+    dibao_top -- "128b filtered pixels" --> fetch_top
+
+    %% Stage 4 ↔ Stage 3 (rec↔db ping-pong)
+    dibao_top -- "256b filtered rec" --> rec_top
+
+    %% Feedback: bitnum
+    cabac_top -- "16b actual_bitnum" --> enc_data_pipeline
+
+    %% enc_data_pipeline feedback
+    enc_data_pipeline -- "shifted params" --> dibao_top
+    enc_data_pipeline -- "shifted params" --> cabac_top
+    enc_data_pipeline -- "bitnum feedback" --> prei_top_buf
+
+    %% Stage 2 coordination
+    ime_top_buf -- "IinP decision" --> fme_top_buf
+    fme_top_buf -- "skip flag, cost" --> enc_data_pipeline
+    fme_top_buf -- "skip flag, cost" --> dibao_top
+
+    %% Bitstream output
+    cabac_top -- "bs_dat_o, bs_val_o" --> BITSTREAM
+
+    %% Styling
+    classDef control fill:#e8d5f5,stroke:#7b3fa0,stroke-width:2px
+    classDef datapath fill:#d5e8f5,stroke:#3a7abf,stroke-width:2px
+    classDef memory fill:#f5e8d5,stroke:#bf7a3a,stroke-width:2px
+    classDef pipeline fill:#d5f5e8,stroke:#3abf7a,stroke-width:2px
+    classDef stage fill:#f5d5f5,stroke:#7b3fbf,stroke-width:1px,stroke-dasharray:5,5
+
+    class enc_ctrl control
+    class fetch_top,prei_top_buf,ime_top_buf,posi_top_buf,fme_top_buf,rec_top,dibao_top,cabac_top datapath
+    class enc_data_pipeline pipeline
+    class EXT_MEM,BITSTREAM,PIXEL_IN memory
+
+    style h265enc_top fill:#f9f9f9,stroke:#333,stroke-width:3px
+    style PIPELINE_CTRL fill:#eee,stroke:#999,stroke-width:1px
+    style FETCH_HUB fill:#eef,stroke:#666,stroke-width:1px
+    style STAGE_0 fill:#fdd,stroke:#999,stroke-width:1px,stroke-dasharray:5,5
+    style STAGE_1 fill:#fdf,stroke:#999,stroke-width:1px,stroke-dasharray:5,5
+    style STAGE_2 fill:#dff,stroke:#999,stroke-width:1px,stroke-dasharray:5,5
+    style STAGE_3 fill:#fed,stroke:#999,stroke-width:1px,stroke-dasharray:5,5
+    style STAGE_4 fill:#dfd,stroke:#999,stroke-width:1px,stroke-dasharray:5,5
+    style STAGE_5 fill:#fde,stroke:#999,stroke-width:1px,stroke-dasharray:5,5

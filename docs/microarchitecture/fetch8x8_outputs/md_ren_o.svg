@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1250" height="740" viewBox="0 0 1250 740">
+<rect width="100%" height="100%" fill="white"/>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8Z" fill="#555"/></marker></defs>
+<style>text{font-family:Arial,sans-serif;font-size:18px;fill:#222}.w{fill:none;stroke:#555;stroke-width:2}.s{fill:white;stroke:#555;stroke-width:2}</style>
+<text x="30" y="35" font-size="24" style="font-size:24px" text-anchor="start">fetch8x8 — md_ren_o</text>
+<polygon class="s" points="280,165 345,205 345,315 280,355"/>
+<text x="293" y="216" font-size="18" style="font-size:18px" text-anchor="start">0</text>
+<text x="293" y="318" font-size="18" style="font-size:18px" text-anchor="start">1</text>
+<polygon class="s" points="570,165 635,205 635,315 570,355"/>
+<text x="583" y="216" font-size="18" style="font-size:18px" text-anchor="start">0</text>
+<text x="583" y="318" font-size="18" style="font-size:18px" text-anchor="start">1</text>
+<polyline class="w" points="345,260 475,260 475,210 570,210"/>
+<polyline class="w" points="635,260 810,260" marker-end="url(#a)"/>
+<rect class="s" x="810" y="195" width="210" height="160"/>
+<text x="915.0" y="269.0" font-size="18" style="font-size:18px" text-anchor="middle">md_ren_o</text>
+<text x="915.0" y="293.0" font-size="18" style="font-size:18px" text-anchor="middle">DFF / reset = 0</text>
+<polyline class="w" points="745,322 810,322"/>
+<text x="745" y="310" font-size="16" style="font-size:16px" text-anchor="start">clk</text>
+<path class="w" d="M810 312 L824 322 L810 332"/>
+<circle class="s" cx="915.0" cy="360" r="5"/>
+<polyline class="w" points="915.0,365 915.0,395"/>
+<text x="915.0" y="415" font-size="16" style="font-size:16px" text-anchor="middle">rstn</text>
+<polyline class="w" points="1020,260 1190,260" marker-end="url(#a)"/>
+<text x="1060" y="246" font-size="18" style="font-size:18px" text-anchor="start">md_ren_o</text>
+<polyline class="w" points="1060,260 1060,100 90,100 90,210 280,210"/>
+<circle cx="1060" cy="260" r="3" fill="#555"/>
+<text x="140" y="198" font-size="18" style="font-size:18px" text-anchor="start">md_ren_o</text>
+<polyline class="w" points="155,310 280,310"/>
+<text x="155" y="297" font-size="18" style="font-size:18px" text-anchor="start">1&#x27;b0</text>
+<polyline class="w" points="465,310 570,310"/>
+<text x="465" y="297" font-size="18" style="font-size:18px" text-anchor="start">1&#x27;b1</text>
+<ellipse class="s" cx="312.5" cy="520" rx="105" ry="32"/>
+<text x="312.5" y="526" font-size="18" style="font-size:18px" text-anchor="middle">cnt == 17</text>
+<polyline class="w" points="312.5,488 312.5,335"/>
+<ellipse class="s" cx="375" cy="625" rx="95" ry="32"/>
+<text x="375" y="631" font-size="18" style="font-size:18px" text-anchor="middle">cnt == 0</text>
+<path class="s" d="M525 565 H545 A57.5 65 0 0 1 545 695 H525 Z"/>
+<polyline class="w" points="470,625 495,625 495,595 525,595"/>
+<polyline class="w" points="435,665 525,665"/>
+<text x="358" y="672" font-size="18" style="font-size:18px" text-anchor="start">enable</text>
+<polyline class="w" points="602.5,630 680,630 680,455 602.5,455 602.5,335"/>
+<text x="30" y="455" font-size="15" style="font-size:15px" text-anchor="start">cnt is the shared cycle-counter value.</text>
+<text x="30" y="715" font-size="15" style="font-size:15px" text-anchor="start">Set on cnt == 0 AND enable; else clear on cnt == 17; else hold. rstn is asynchronous active-low.</text>
+</svg>

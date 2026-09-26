@@ -1,138 +1,95 @@
 ---
-title: PREI (Pre-Intra Prediction) Module Hierarchy
+title: PREI Module Hierarchy
 ---
 graph TB
-    subgraph "External Interfaces"
-        CLK["clk"]
-        RSTN["rstn"]
-        START["prei_start_i"]
-        DONE["prei_done_o"]
-        PIXEL["prei_cur_data_i[255:0]<br/>32 pixels × 8-bit"]
-        RC_IN["actual_bitnum_i[15:0]<br/>rc_ctu_x/y_i"]
-        RC_REG["reg_k[15:0]<br/>reg_bitnum_i[31:0]<br/>reg_ROI_*<br/>reg_initial/max/min/delta_qp"]
-        MD_RD["posi_md_ena_i<br/>posi_md_addr_i[8:0]"]
-        SEL["sel_mod_2_i"]
+    subgraph WRAPPER["prei_top_buf — Wrapper (rtl/top/prei_top_buf.v:16)"]
+        direction TB
+        BUF_LABEL["prei_top_buf<br/>Ping-pong mode RAM<br/>Address remap"]
+
+        subgraph MODE_RAM["Mode RAM (×2, Ping-Pong)"]
+            RAM0["prei_md_ram_sp_85x6<br/>RAM 0<br/>85 × 6-bit<br/>(rtl/mem/)"]
+            RAM1["prei_md_ram_sp_85x6<br/>RAM 1<br/>85 × 6-bit<br/>(rtl/mem/)"]
+        end
+
+        REMAP["Address Remap<br/>posi_addr &lt; 84 → addr+1<br/>posi_addr ≥ 84 → 21+(addr-84)/4"]
     end
 
-    subgraph "prei_top_buf [rtl/top/prei_top_buf.v:16]"
-        BUF["prei_top_buf"]
-    end
+    subgraph TOP["prei_top — Core (rtl/prei/prei_top.v:13)"]
+        direction TB
+        TOP_LABEL["prei_top<br/>Mode Decision + Rate Control"]
 
-    subgraph "Mode RAM (Ping-Pong)"
-        MRAM0["prei_md_ram_sp_85x6<br/>RAM 0<br/>[rtl/mem/]<br/>(wr when sel_mod_2==0)"]
-        MRAM1["prei_md_ram_sp_85x6<br/>RAM 1<br/>[rtl/mem/]<br/>(wr when sel_mod_2==1)"]
-    end
+        subgraph MD["hevc_md_top → md_top — Mode Decision"]
+            direction TB
+            MDTOP["hevc_md_top<br/>(rtl/prei/hevc_md_top.v:13)<br/>Enable pipeline"]
 
-    subgraph "prei_top [rtl/prei/prei_top.v:13]"
-        TOP["prei_top"]
-    end
+            subgraph CORE["md_top (rtl/prei/md_top.v:7)"]
+                direction TB
+                MDTOP2["md_top<br/>Gradient + Angular Cost<br/>+ Comparison + DC/Planar"]
 
-    subgraph "Mode Decision"
-        subgraph "hevc_md_top [rtl/prei/hevc_md_top.v:13]"
-            MD_TOP["hevc_md_top"]
+                subgraph FETCH_SUB["Pixel Fetch"]
+                    FETCH8["fetch8x8<br/>(rtl/prei/fetch8x8.v:9)<br/>8×8 block fetch<br/>512-bit register"]
+                    MDFETCH["md_fetch<br/>(rtl/prei/md_fetch.v:7)<br/>x1/x2/x3 extraction<br/>3×(3×8-bit)"]
+                end
+
+                subgraph GRAD_SUB["Gradient + Cost"]
+                    GXGY["gxgy<br/>(rtl/prei/gxgy.v:7)<br/>Sobel gradient<br/>gx[10:0], gy[10:0]"]
+                    COUNTER["counter<br/>(rtl/prei/counter.v:4)<br/>32 angular modes<br/>mode2..mode33[21:0]"]
+                end
+
+                subgraph DECIDE_SUB["Decision"]
+                    COMPARE["compare<br/>(rtl/prei/compare.v:7)<br/>Best angle: 8→16→32→64<br/>bestmode, modebest"]
+                    DCPLANAR["dc_planar<br/>(rtl/prei/DC_Plannar.v:7)<br/>DC/Planar vs Angle<br/>bestmode_o/16/32/64_o"]
+                end
+
+                subgraph CTRL_SUB["Control + Write"]
+                    CTRL["control<br/>(rtl/prei/control.v:11)<br/>cyclecnt[5:0]: 0→40<br/>blockcnt[6:0]: 0→65"]
+                    MODWRITE["mode_write<br/>(rtl/prei/mode_write.v:9)<br/>md_we, md_waddr[6:0]<br/>md_wdata[5:0]"]
+                end
+            end
         end
 
-        subgraph "md_top [rtl/prei/md_top.v:7]"
-            MT["md_top"]
-        end
-
-        subgraph "Data Path"
-            FETCH8["fetch8x8<br/>[rtl/prei/fetch8x8.v]<br/>8×8 block fetch<br/>512-bit buffer"]
-            MDFETCH["md_fetch<br/>[rtl/prei/md_fetch.v]<br/>x1/x2/x3 extraction"]
-            GXGY["gxgy<br/>[rtl/prei/gxgy.v]<br/>Sobel gradient<br/>gx, gy"]
-        end
-
-        subgraph "Mode Cost"
-            COUNTER["counter<br/>[rtl/prei/counter.v]<br/>32 angular modes<br/>mode2..mode33"]
-            COMPARE["compare<br/>[rtl/prei/compare.v]<br/>Best angle selection<br/>8/16/32/64"]
-        end
-
-        subgraph "Final Decision"
-            DCPLANAR["dc_planar<br/>[rtl/prei/DC_Plannar.v]<br/>DC/Planar vs Angle<br/>Hierarchical 8→64"]
-        end
-
-        subgraph "Control + Write"
-            CTRL["control<br/>[rtl/prei/control.v]<br/>40-cycle counter<br/>65-block counter"]
-            MODWRITE["mode_write<br/>[rtl/prei/mode_write.v]<br/>Mode write-back<br/>8/16/32/64 timing"]
+        subgraph RC["rate_control — Rate Control"]
+            RC_MOD["rate_control<br/>(rtl/prei/rate_control.v:22)<br/>11-cycle pipeline<br/>QP adjustment + ROI"]
         end
     end
 
-    subgraph "Rate Control"
-        RC["rate_control<br/>[rtl/prei/rate_control.v]<br/>11-cycle pipeline<br/>QP adjustment<br/>ROI support"]
-    end
+    %% Hierarchy connections
+    BUF_LABEL --> TOP_LABEL
+    TOP_LABEL --> MDTOP
+    MDTOP --> MDTOP2
+    MDTOP2 --> FETCH8
+    MDTOP2 --> MDFETCH
+    MDTOP2 --> GXGY
+    MDTOP2 --> COUNTER
+    MDTOP2 --> COMPARE
+    MDTOP2 --> DCPLANAR
+    MDTOP2 --> CTRL
+    MDTOP2 --> MODWRITE
 
-    %% External connections
-    CLK --> TOP
-    RSTN --> TOP
-    START --> TOP
-    PIXEL --> FETCH8
+    %% RAM connections
+    TOP_LABEL -->|"md_we, md_waddr,<br/>md_wdata"| RAM0
+    TOP_LABEL -->|"md_we, md_waddr,<br/>md_wdata"| RAM1
+    REMAP --> RAM0
+    REMAP --> RAM1
 
-    %% ime_top_buf connections
-    BUF --> TOP
-    TOP -->|"md_we, md_waddr,<br/>md_wdata"| MRAM0
-    TOP -->|"md_we, md_waddr,<br/>md_wdata"| MRAM1
-    MD_RD --> MRAM0
-    MD_RD --> MRAM1
-
-    %% hevc_md_top internal
-    TOP --> MD_TOP
-    MD_TOP --> MT
-    MD_TOP --> FETCH8
-    MD_TOP --> MODWRITE
-
-    %% md_top internal
-    MT --> MDFETCH
-    MT --> CTRL
-    MT --> GXGY
-    MT --> COUNTER
-    MT --> COMPARE
-    MT --> DCPLANAR
-
-    %% Data flow
-    MDFETCH -->|"x1, x2, x3"| GXGY
-    GXGY -->|"gx, gy"| COUNTER
-    GXGY -->|"gx, gy"| DCPLANAR
-    COUNTER -->|"mode2..mode33"| COMPARE
-    COMPARE -->|"bestmode, modebest<br/>bestmode16/32/64"| DCPLANAR
-    COMPARE -->|"bestmode, modebest"| MODWRITE
-    DCPLANAR -->|"bestmode_o/16/32/64_o"| MODWRITE
-
-    %% Control signals
-    CTRL -->|"cyclecnt, blockcnt"| FETCH8
-    CTRL -->|"gxgyrun"| GXGY
-    CTRL -->|"counterrun1/2"| COUNTER
-    CTRL -->|"newblock"| MT
-    CTRL -.->|"finish"| TOP
-
-    %% Mode write to RAM
-    MODWRITE -->|"md_we, md_waddr,<br/>md_wdata"| TOP
-
-    %% Rate control
-    TOP -->|"md_done_w"| RC
-    RC -.->|"rc_done_o"| TOP
-
-    %% Done signals
-    MD_TOP -.->|"finish"| TOP
-    TOP -.->|"prei_done_o"| BUF
-
-    %% Mode RAM address remapping
-    BUF -.->|"posi_md_data_o"| MD_RD
+    %% RC connection
+    TOP_LABEL -->|"md_done_w"| RC_MOD
+    RC_MOD -.->|"rc_done_o"| TOP_LABEL
 
     %% Style
-    classDef external fill:#f5f5f5,stroke:#999,color:#000
     classDef wrapper fill:#4a90d9,stroke:#2c5f8a,color:#fff,font-weight:bold
     classDef core fill:#d9534f,stroke:#a94442,color:#fff,font-weight:bold
-    classDef ctrlModule fill:#e8a838,stroke:#b07d28,color:#000
-    classDef dataModule fill:#9b59b6,stroke:#7d3c98,color:#fff
-    classDef memModule fill:#5cb85c,stroke:#3d8b3d,color:#fff
-    classDef rcModule fill:#27ae60,stroke:#1e8449,color:#fff
+    classDef fetch fill:#9b59b6,stroke:#7d3c98,color:#fff
+    classDef gradient fill:#9b59b6,stroke:#7d3c98,color:#fff
+    classDef decision fill:#9b59b6,stroke:#7d3c98,color:#fff
+    classDef ctrl fill:#e8a838,stroke:#b07d28,color:#000
+    classDef rc fill:#27ae60,stroke:#1e8449,color:#fff
+    classDef mem fill:#5cb85c,stroke:#3d8b3d,color:#fff
 
-    class CLK,RSTN,START,DONE,PIXEL,RC_IN,RC_REG,MD_RD,SEL external
-    class BUF wrapper
-    class TOP,MD_TOP,MT core
-    class CTRL ctrlModule
-    class GXGY,COUNTER,COMPARE,DCPLANAR dataModule
-    class FETCH8,MDFETCH dataModule
-    class MODWRITE ctrlModule
-    class RC rcModule
-    class MRAM0,MRAM1 memModule
+    class BUF_LABEL,TOP_LABEL,MDTOP,MDTOP2 wrapper
+    class GXGY,COUNTER,COMPARE,DCPLANAR,MDFETCH fetch
+    class FETCH8 fetch
+    class CTRL,MODWRITE ctrl
+    class RC_MOD,RC rc
+    class RAM0,RAM1 mem
+    class REMAP wrapper

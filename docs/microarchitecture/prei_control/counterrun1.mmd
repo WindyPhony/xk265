@@ -1,0 +1,7 @@
+%% Native Mermaid approximates vertical mux geometry. [V]=VERIFIED, [I]=INFERRED.
+flowchart LR
+  S["gxgyrun<br/>shared registered source [V]"] -->|D| Q["counterrun1<br/>DFF reset 0 [V]"]
+  Q --> O(["counterrun1"])
+  CLK["clk"] -.->|posedge| Q
+  RST["rstn"] -.->|"async active-low reset"| Q
+  classDef default fill:#fff,stroke:#555,color:#111;

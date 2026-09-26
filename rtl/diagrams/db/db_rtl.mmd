@@ -1,0 +1,123 @@
+---
+title: xk265 DB/SAO RTL Data Flow and Interfaces
+---
+```mermaid
+graph LR
+    subgraph "External Interfaces"
+        SYS["Pipeline Interface<br/>sys_start_i, sys_done_o<br/>sys_ctu_x/y_i[5:0]"]
+        RC_QP["rc_qp_i[5:0]"]
+        MB["CTU Info<br/>mb_type_i<br/>mb_partition_i[20:0]<br/>mb_p_pu_mode_i[41:0]<br/>mb_cbf_i/u_i/v_i[255:0]"]
+        REC_IF["Rec Memory IF<br/>rec_rd/wr_*<br/>256-bit data"]
+        ORI_IF["Original Pixel IF<br/>ori_*<br/>256-bit data"]
+        FETCH_IF["Fetch Store IF<br/>fetch_wen_o<br/>fetch_wdata_o[127:0]"]
+        TOP_IF["Top Pixel IF<br/>top_ren_o<br/>top_rdata_i[31:0]"]
+        MV_IF["MV RAM IF<br/>mb_mv_ren_o<br/>mb_mv_raddr_o[5:0]<br/>mb_mv_rdata_i[19:0]"]
+        SAO_OUT["SAO Data → CABAC<br/>sao_data_o[61:0]"]
+    end
+
+    subgraph "dbsao_controller"
+        FSM["7-state FSM<br/>IDLE→LOAD→DBY→DBU→DBV→SAO→OUT"]
+        CNT["9-bit counter<br/>cycles: 128/263/71/71/451/455"]
+    end
+
+    subgraph "dbsao_datapath"
+        TOP_BUF["Top Line Buffers<br/>top_y_r[15:0] 128b<br/>top_u_r[7:0] 128b<br/>top_v_r[7:0] 128b"]
+        LEFT_BUF["Left Line Buffers<br/>left_y_r[15:0] 128b<br/>left_u_r[7:0] 128b<br/>left_v_r[7:0] 128b"]
+        TL_BUF["Top-Left Buffers<br/>y_tl_r, u_tl_r, v_tl_r"]
+        BLK_BUF["Block Storage<br/>block[7:0] 128b<br/>right_block_0/1"]
+        PQ_MUX["P/Q Block MUX<br/>dbf_p_o[127:0]<br/>dbf_q_o[127:0]<br/>is_ver_o"]
+        SAO_BUF["SAO Input Buffer<br/>rec_line_i_0..5[47:0]<br/>ori_line_i_0..3[31:0]"]
+        OUT_MUX["Output Reorder<br/>rec_pxl_o[255:0]"]
+    end
+
+    subgraph "db_bs"
+        TU_EDGE["db_tu_edge<br/>16 vert + 7 horiz edges"]
+        PU_EDGE["db_pu_edge<br/>PU partition edges"]
+        QP_MOD["db_qp<br/>QP modification flag"]
+        TUPU["db_tupu_ram_sp_64x32"]
+        CBF["db_cbf_ram_sp_64x16"]
+        QP_RAM["db_qp_ram_sp_64x20"]
+    end
+
+    subgraph "db_mv"
+        MV_BUF["db_mv_ram_sp_64x20<br/>db_mv_ram_sp_512x20"]
+        MV_CMP["MV Comparison<br/>|mv_p - mv_q| > 3"]
+    end
+
+    subgraph "db_filter"
+        BETA_LUT["db_lut_beta<br/>QP[5:0] → beta[6:0]"]
+        TC_LUT["db_lut_tc<br/>(QP,INTRA) → tc[4:0]"]
+        BS_CALC["BS Calculation<br/>INTRA: tu_edge<br/>INTER: tu_edge·cbf + pu_edge·mv_diff"]
+        STRONG_F["db_strong_filter<br/>3 pixels/side<br/>clip(p, q, ±tc*2)"]
+        NORMAL_F["db_normal_filter<br/>1-2 pixels/side<br/>not_nature_edge[3:0]"]
+        CHROMA_F["db_chroma_filter<br/>1 pixel/side<br/>INTRA chroma only"]
+        FLT_MUX["Filter Output MUX<br/>Priority: chroma → none → strong → normal"]
+    end
+
+    subgraph "sao_top"
+        SAO_M["sao_mode<br/>EO0/EO1/EO2/EO3/BO"]
+        SAO_S["sao_statistic<br/>Per-direction/band accum"]
+        SAO_C["sao_cal_offset<br/>Offset computation"]
+        SAO_T["sao_type_decision<br/>Best type selection"]
+        SAO_A["sao_add_offset<br/>Offset application"]
+        SAO_D["sao_bo_predecision<br/>BO candidate pre-select"]
+    end
+
+    SYS --> FSM
+    FSM --> CNT
+    CNT --> TOP_BUF
+    CNT --> LEFT_BUF
+    CNT --> BLK_BUF
+
+    MB --> TU_EDGE
+    MB --> PU_EDGE
+    RC_QP --> QP_RAM
+    MB --> CBF
+    TU_EDGE --> BS_CALC
+    PU_EDGE --> BS_CALC
+    QP_MOD --> BS_CALC
+    CBF --> BS_CALC
+
+    MV_IF --> MV_BUF
+    MV_BUF --> MV_CMP
+    MV_CMP --> BS_CALC
+
+    REC_IF --> OUT_MUX
+    ORI_IF --> SAO_BUF
+    TOP_IF --> TOP_BUF
+
+    TOP_BUF --> PQ_MUX
+    LEFT_BUF --> PQ_MUX
+    TL_BUF --> PQ_MUX
+    BLK_BUF --> PQ_MUX
+
+    PQ_MUX -->|"p_i[127:0]"| STRONG_F
+    PQ_MUX -->|"q_i[127:0]"| STRONG_F
+    PQ_MUX -->|"p_i[127:0]"| NORMAL_F
+    PQ_MUX -->|"q_i[127:0]"| NORMAL_F
+    PQ_MUX -->|"p_i[127:0]"| CHROMA_F
+    PQ_MUX -->|"q_i[127:0]"| CHROMA_F
+    BS_CALC -->|"bs_w"| FLT_MUX
+    BETA_LUT -->|"beta"| FLT_MUX
+    TC_LUT -->|"tc"| STRONG_F
+    TC_LUT -->|"tc"| NORMAL_F
+    TC_LUT -->|"tc"| CHROMA_F
+
+    STRONG_F -->|"p_o, q_o"| BLK_BUF
+    NORMAL_F -->|"p_o, q_o"| BLK_BUF
+    CHROMA_F -->|"p_o, q_o"| BLK_BUF
+
+    BLK_BUF --> OUT_MUX
+    OUT_MUX -->|"rec_wr_pxl_o[255:0]"| REC_IF
+    OUT_MUX -->|"fetch_wdata_o[127:0]"| FETCH_IF
+
+    SAO_BUF --> SAO_S
+    SAO_BUF --> SAO_A
+    SAO_D --> SAO_M
+    SAO_S --> SAO_C
+    SAO_C --> SAO_T
+    SAO_M --> SAO_A
+    SAO_T --> SAO_A
+    SAO_A -->|"sao_block_o[127:0]"| OUT_MUX
+    SAO_A -->|"sao_data_o[61:0]"| SAO_OUT
+```

@@ -1,0 +1,175 @@
+---
+title: POSI RTL Block Diagram
+created: 2026-09-04
+status: DRAFT
+---
+flowchart TB
+    subgraph EXTERNAL_IF["External Interfaces"]
+        direction LR
+        START["start_i [1]"]
+        DONE["done_o [1]"]
+        NUM_MODE["num_mode_i [2:0]"]
+        QP["qp_i [5:0]"]
+        CTU_CFG["ctu_x/y_all_i<br/>ctu_x/y_res_i<br/>ctu_x/y_cur_i"]
+    end
+
+    subgraph CTRL["posi_ctrl"]
+        direction TB
+        FSM["cur_state_r [3:0]<br/>9-State FSM"]
+        NXT["nxt_state_w [3:0]"]
+        POS["position_r [7:0]<br/>Bit-interleaved<br/>{y3,x3,y2,x2,y1,x1,y0,x0}"]
+        CNT_MODE["cnt_mode_r [2:0]<br/>0 → num_mode_i"]
+        CNT_TRAV["cnt_trav_r [5:0]<br/>Size-dependent max"]
+        CNT_WAIT["cnt_wait_r [4:0]<br/>Pipeline flush"]
+        START_TRA["start_tra_o<br/>(1-cycle pulse)"]
+        START_REF["start_ref_o<br/>(1-cycle pulse)"]
+        TRA_BUSY["tra_busy_o<br/>(level signal)"]
+        TRA_MODE["tra_mode_o<br/>0=PRE, 1=POS"]
+        SIZE_OUT["size_o [1:0]<br/>00=4×4, 01=8×8<br/>10=16×16, 11=32×32"]
+    end
+
+    subgraph TRANSFER["posi_transfer"]
+        direction TB
+        TR_FSM["cur_state_r [1:0]<br/>IDLE/PRE/POS_COL/POS_FRA"]
+        TR_NXT["nxt_state_w [1:0]"]
+        IDX_X["idx_4x4_x_r [3:0]<br/>0→15"]
+        IDX_Y["idx_4x4_y_r [3:0]<br/>0→15"]
+        PIXEL_SPLIT["Pixel Split<br/>256b → 32×8b<br/>a/b × row/col"]
+        DLY_VAL["val_dly_r [1:0]<br/>2-cycle delay"]
+        DLY_STATE["cur_state_dly_r<br/>State delay"]
+        DLY_IDX["idx_4x4_x/y_dly_r<br/>Index delay"]
+
+        subgraph WRITE_GEN["Write Enable Logic"]
+            ROW_WR["row_wr_ena/adr/dat<br/>(PRE + y≠15)"]
+            COL_WR["col_wr_ena/adr/dat<br/>(PRE + x≠15) |<br/>(POS_COL + x==15)"]
+            FRA_WR["fra_wr_ena/adr/dat<br/>(POS_FRA + y==15)"]
+        end
+    end
+
+    subgraph MEMORY["posi_memory_wrapper"]
+        direction TB
+        ROW_RAM["row_ram<br/>Write: tra_row_wr_*<br/>Read: ref_row_rd_*"]
+        COL_RAM["col_ram<br/>Write: tra_col_wr_*<br/>Read: ref_col_rd_*"]
+        FRA_RAM["fra_ram<br/>Write: tra_fra_wr_*<br/>Read: ref_fra_rd_*"]
+    end
+
+    subgraph REFERENCE["posi_reference"]
+        direction TB
+        subgraph RAW_PIPE["RAW Pipeline (5 stages)"]
+            R_VALID["raw_valid_r"]
+            R_CNT["cnt_raw_r [4:0]<br/>Size-dependent max"]
+            R_D0["d0: size/position/idx"]
+            R_D1["d1: delayed values"]
+            R_D2["d2: delayed values"]
+            R_D3["d3: delayed values"]
+        end
+
+        subgraph REF_REGS["Reference Registers"]
+            R_TL["ref_raw_tl_r [7:0]<br/>Top-Left pixel"]
+            R_T["ref_raw_t00..t31_r<br/>32 × 8b Top"]
+            R_R["ref_raw_r00..r31_r<br/>32 × 8b Right"]
+            R_L["ref_raw_l00..l31_r<br/>32 × 8b Left"]
+            R_D["ref_raw_d00..d31_r<br/>32 × 8b Down"]
+        end
+
+        subgraph PAD_LOGIC["Padding Logic"]
+            CTU_EXIST["CTU Existence<br/>tl/tp/rt/lf"]
+            PU_EXIST["PU Existence<br/>tp/lf/rt/dn"]
+            PAD_REGS["ref_pad_t/r/l/d/tl<br/>32 × 8b each"]
+        end
+
+        subgraph FLT_PIPE["Filter Pipeline"]
+            FLT_MODE["Mode Read<br/>mod_rd_ena/adr/dat"]
+            FLT_REGS["ref_flt_t/r/l/d/tl<br/>32 × 8b each"]
+        end
+
+        REF_OUT["ref_t_o [255:0]<br/>ref_r_o [255:0]<br/>ref_l_o [255:0]<br/>ref_d_o [255:0]<br/>ref_tl_o [7:0]"]
+    end
+
+    subgraph PREDICT["posi_prediction"]
+        direction TB
+        PRE_FSM["cur_state_r [0]<br/>IDLE/BUSY"]
+        PRE_CNT["pre_cnt_r [5:0]<br/>Sub-block counter"]
+        INTRA["intra_pred<br/>pre_sel_i = TYPE_Y<br/>mode_i, size_i<br/>i4x4_x/y_i"]
+        PRE_PIPE["3-Cycle Delay<br/>val_r [2:0]<br/>mode_r [17:0]<br/>size_r [5:0]<br/>position_r [23:0]"]
+        AHD_OUT["val_ahd_o<br/>idx_4x4_x/y_ahd_o<br/>(1 cycle ahead)"]
+        PRE_OUT["val_o, mode_o<br/>size_o, position_o<br/>dat_pre_o [127:0]"]
+    end
+
+    subgraph BUFFER["posi_buffer"]
+        direction TB
+        subgraph DIF_CALC["Residual Calculation"]
+            DIF_D0["dat_dif_d0_X_Y_r<br/>16 × 10b<br/>original − predicted"]
+            DIF_D1["dat_dif_d1_X_Y_r<br/>16 × 10b<br/>1-cycle delay"]
+            DIF_D2["dat_dif_d2_X_Y_r<br/>8 × 10b<br/>2-cycle delay"]
+        end
+        BUF_DLY["2-Cycle Delay<br/>val_r [1:0]<br/>mode/size/position"]
+        BUF_MUX["Output MUX<br/>SIZE_04: d1<br/>SIZE_08+: d1+d0 / d2+d1"]
+        BUF_OUT["val_o [1:0]<br/>mode/size/position<br/>dat_o [175:0]<br/>(9+1)×16"]
+    end
+
+    subgraph SATD_COST["posi_satd_cost"]
+        direction TB
+
+        subgraph SATD_PIPELINE["SATD Pipeline"]
+            direction TB
+            subgraph STAGE1["Stage 1: 1D Transform (7 cycles)"]
+                E1D0["posi_satd_cost_engine_1d_0<br/>DATA_WIDTH = PIXEL_WIDTH+1"]
+                E1D1["posi_satd_cost_engine_1d_1<br/>DATA_WIDTH = PIXEL_WIDTH+1"]
+            end
+            subgraph STAGE2["Stage 2: Transpose"]
+                TRANS["posi_satd_cost_transpose<br/>DATA_WIDTH = PIXEL_WIDTH+4"]
+            end
+            subgraph STAGE3["Stage 3: 2D Transform (7 cycles)"]
+                E2D0["posi_satd_cost_engine_2d_0<br/>DATA_WIDTH = PIXEL_WIDTH+4"]
+                E2D1["posi_satd_cost_engine_2d_1<br/>DATA_WIDTH = PIXEL_WIDTH+4"]
+            end
+        end
+
+        subgraph SUMMATION["Summation"]
+            ABS["16× Absolute Values<br/>PIXEL_WIDTH+7 bits"]
+            SUM4["4-Part Sum<br/>dat_sum_0_0_3/0_4_7<br/>dat_sum_1_0_3/1_4_7"]
+            SUM_ACC["Accumulator<br/>dat_sum_r<br/>dat_sum_shift_r"]
+        end
+
+        RATE["posi_rate_estimation<br/>bitrate_w [12:0]"]
+        COST_OUT["val_o = lst_r[2]<br/>dat_o = dat_sum_shift_r<br/>+ bitrate_w"]
+    end
+
+    subgraph DECISION["posi_partition_decision"]
+        direction TB
+        DEC_FSM["Decision Logic<br/>Tracks best per 4×4<br/>Selects best partition"]
+        MOD_WR["Mode Write-Back<br/>mod_wr_ena_o [1]<br/>mod_wr_adr_o [7:0]<br/>mod_wr_dat_o [5:0]"]
+        PART_OUT["partition_o [84:0]<br/>bst_cost_o [POSI_COST_WIDTH-1:0]"]
+    end
+
+    %% Connections
+    CTRL -->|"start_tra_o"| TRANSFER
+    CTRL -->|"start_ref_o"| REFERENCE
+    CTRL -->|"size_o, position_o"| PREDICT
+    CTRL -->|"size_o, position_o"| BUFFER
+    CTRL -->|"size_o, position_o"| SATD_COST
+
+    TRANSFER -->|"row_wr_*"| MEMORY
+    TRANSFER -->|"col_wr_*"| MEMORY
+    TRANSFER -->|"fra_wr_*"| MEMORY
+
+    MEMORY -->|"row_rd_*"| REFERENCE
+    MEMORY -->|"col_rd_*"| REFERENCE
+    MEMORY -->|"fra_rd_*"| REFERENCE
+
+    REFERENCE -->|"ref_t/r/l/d/tl"| PREDICT
+    REFERENCE -->|"mod_rd_*"| EXTERNAL_IF
+
+    PREDICT -->|"dat_pre_o [127:0]<br/>val_o"| BUFFER
+    PREDICT -->|"val_ahd_o<br/>idx_4x4_x/y_ahd_o"| BUFFER
+
+    BUFFER -->|"ori_rd_ena/siz/x/y/idx"| EXTERNAL_IF
+    BUFFER -->|"dat_o [175:0]<br/>val_o"| SATD_COST
+
+    SATD_COST -->|"dat_o<br/>val_o"| DECISION
+    DECISION -->|"done_o"| CTRL
+    DECISION -->|"mod_wr_*"| EXTERNAL_IF
+    DECISION -->|"partition_o<br/>cost_o"| EXTERNAL_IF
+
+    TRANSFER -->|"ori_rd_ena/siz/x/y/idx"| EXTERNAL_IF

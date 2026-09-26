@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1480" height="850" viewBox="0 0 1480 850">
+<rect width="100%" height="100%" fill="white"/>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8Z" fill="#444"/></marker></defs>
+<style>text{font-family:Arial,sans-serif;fill:#222}.wire{fill:none;stroke:#555;stroke-width:2;stroke-linejoin:round}.shape{fill:white;stroke:#555;stroke-width:2}.ctrl{stroke-dasharray:6 4}</style>
+<text x="32" y="38" font-size="25" text-anchor="start">prei / control — blockcnt</text>
+<polygon class="shape" points="320,190 390,235 390,365 320,410"/>
+<text x="334" y="251" font-size="19" text-anchor="start">0</text>
+<text x="334" y="362" font-size="19" text-anchor="start">1</text>
+<text x="354" y="308" font-size="13" text-anchor="middle">[I]</text>
+<polygon class="shape" points="680,190 750,235 750,365 680,410"/>
+<text x="694" y="251" font-size="19" text-anchor="start">0</text>
+<text x="694" y="362" font-size="19" text-anchor="start">1</text>
+<text x="714" y="308" font-size="13" text-anchor="middle">[I]</text>
+<polyline class="wire" points="390,300 555,300 555,245 680,245"/>
+<polyline class="wire" points="750,300 965,300" marker-end="url(#arrow)"/>
+<rect class="shape" x="965" y="220" width="230" height="190"/>
+<text x="1080.0" y="296" font-size="22" text-anchor="middle">blockcnt[6:0]</text>
+<text x="1080.0" y="329" font-size="16" text-anchor="middle">DFF · reset = 0 [V]</text>
+<polyline class="wire ctrl" points="880,375 965,375"/>
+<text x="880" y="361" font-size="17" text-anchor="start">clk</text>
+<path class="wire" d="M965 363 L982 375 L965 387"/>
+<circle class="shape" cx="1080.0" cy="415" r="5"/>
+<polyline class="wire ctrl" points="1080.0,420 1080.0,466"/>
+<text x="1080.0" y="488" font-size="17" text-anchor="middle">rstn</text>
+<text x="1080.0" y="511" font-size="15" text-anchor="middle">async active-low</text>
+<polyline class="wire" points="1195,300 1440,300" marker-end="url(#arrow)"/>
+<text x="1250" y="284" font-size="19" text-anchor="start">blockcnt[6:0]</text>
+<polyline class="wire" points="1240,300 1240,110 110,110 110,245 320,245"/>
+<circle cx="1240" cy="300" r="3" fill="#555"/>
+<text x="135" y="228" font-size="19" text-anchor="start">blockcnt</text>
+<polyline class="wire" points="195,355 320,355"/>
+<text x="195" y="340" font-size="19" text-anchor="start">7&#x27;d0</text>
+<polyline class="wire" points="110,245 110,440 565,440 565,355 680,355"/>
+<circle cx="110" cy="245" r="3" fill="#555"/>
+<text x="570" y="340" font-size="16" text-anchor="start">blockcnt + 1</text>
+<ellipse class="shape" cx="355" cy="520" rx="135" ry="34"/>
+<text x="355" y="526" font-size="18" text-anchor="middle">finish</text>
+<polyline class="wire ctrl" points="355,486 355,387.5"/>
+<path class="shape" d="M605 600 H630 A60 65 0 0 1 630 730 H605 Z"/>
+<text x="650" y="671" font-size="13" text-anchor="middle">[I]</text>
+<ellipse class="shape" cx="420" cy="629" rx="130" ry="34"/>
+<text x="420" y="635" font-size="18" text-anchor="middle">cyclecnt == 40</text>
+<polyline class="wire ctrl" points="550,629 605,629"/>
+<ellipse class="shape" cx="420" cy="701" rx="130" ry="34"/>
+<text x="420" y="707" font-size="18" text-anchor="middle">enable</text>
+<polyline class="wire ctrl" points="550,701 605,701"/>
+<polyline class="wire ctrl" points="690,665 855,665 855,480 715,480 715,387.5"/>
+<text x="32" y="780" font-size="17" text-anchor="start">Priority: asynchronous reset → increment on enable AND cyclecnt == 40 → clear on finish → hold.</text>
+<text x="32" y="808" font-size="15" text-anchor="start">RTL: rtl/prei/control.v:63–69 · [V] VERIFIED register/RTL expression · [I] INFERRED mux/gate schematic</text>
+<text x="32" y="832" font-size="15" text-anchor="start">Solid = data; dashed = control/clock/reset. Named feedback expressions use pre-edge state. No extra modules are implied.</text>
+</svg>

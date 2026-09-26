@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1230" height="620" viewBox="0 0 1230 620">
+<rect width="100%" height="100%" fill="white"/>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8Z" fill="#444"/></marker></defs>
+<style>text{font-family:Arial,sans-serif;fill:#222}.wire{fill:none;stroke:#555;stroke-width:2;stroke-linejoin:round}.shape{fill:white;stroke:#555;stroke-width:2}.ctrl{stroke-dasharray:6 4}</style>
+<text x="32" y="38" font-size="25" text-anchor="start">prei / control — newblock</text>
+<text x="50" y="142" font-size="20" text-anchor="start">cyclecnt[5:0]</text>
+<text x="50" y="167" font-size="15" text-anchor="start">shared counter output [V]</text>
+<polyline class="wire" points="50,185 310,185"/>
+<ellipse class="shape" cx="440" cy="185" rx="130" ry="34"/>
+<text x="440" y="191" font-size="18" text-anchor="middle">== 6&#x27;d40</text>
+<polyline class="wire" points="570,185 750,185" marker-end="url(#arrow)"/>
+<rect class="shape" x="750" y="105" width="200" height="190"/>
+<text x="850.0" y="181" font-size="22" text-anchor="middle">newblock</text>
+<text x="850.0" y="214" font-size="16" text-anchor="middle">DFF · reset = 0 [V]</text>
+<polyline class="wire ctrl" points="665,260 750,260"/>
+<text x="665" y="246" font-size="17" text-anchor="start">clk</text>
+<path class="wire" d="M750 248 L767 260 L750 272"/>
+<circle class="shape" cx="850.0" cy="300" r="5"/>
+<polyline class="wire ctrl" points="850.0,305 850.0,351"/>
+<text x="850.0" y="373" font-size="17" text-anchor="middle">rstn</text>
+<text x="850.0" y="396" font-size="15" text-anchor="middle">async active-low</text>
+<polyline class="wire" points="950,185 1180,185" marker-end="url(#arrow)"/>
+<text x="1000" y="165" font-size="19" text-anchor="start">newblock</text>
+<text x="305" y="245" font-size="16" text-anchor="start">Comparison [V]; 1 when equal, 0 otherwise.</text>
+<text x="32" y="550" font-size="17" text-anchor="start">Every clock: newblock &lt;= (pre-edge cyclecnt == 40). This output is not gated by enable.</text>
+<text x="32" y="578" font-size="15" text-anchor="start">RTL: rtl/prei/control.v:47–53 · [V] VERIFIED register/RTL expression · [I] INFERRED mux/gate schematic</text>
+<text x="32" y="602" font-size="15" text-anchor="start">Solid = data; dashed = control/clock/reset. Named feedback expressions use pre-edge state. No extra modules are implied.</text>
+</svg>

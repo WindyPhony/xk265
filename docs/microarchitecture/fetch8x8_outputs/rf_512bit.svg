@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1460" height="1050" viewBox="0 0 1460 1050">
+<rect width="100%" height="100%" fill="white"/>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8Z" fill="#555"/></marker></defs>
+<style>text{font-family:Arial,sans-serif;font-size:18px;fill:#222}.w{fill:none;stroke:#555;stroke-width:2}.s{fill:white;stroke:#555;stroke-width:2}</style>
+<text x="30" y="35" font-size="24" style="font-size:24px" text-anchor="start">fetch8x8 — rf_512bit</text>
+<polygon class="s" points="340,165 405,205 405,315 340,355"/>
+<text x="353" y="216" font-size="18" style="font-size:18px" text-anchor="start">0</text>
+<text x="353" y="318" font-size="18" style="font-size:18px" text-anchor="start">1</text>
+<polyline class="w" points="405,260 640,260" marker-end="url(#a)"/>
+<rect class="s" x="640" y="195" width="285" height="160"/>
+<text x="782.5" y="269.0" font-size="18" style="font-size:18px" text-anchor="middle">rf_512bit[511:256]</text>
+<text x="782.5" y="293.0" font-size="18" style="font-size:18px" text-anchor="middle">DFF / reset = 0</text>
+<polyline class="w" points="575,322 640,322"/>
+<text x="575" y="310" font-size="16" style="font-size:16px" text-anchor="start">clk</text>
+<path class="w" d="M640 312 L654 322 L640 332"/>
+<circle class="s" cx="782.5" cy="360" r="5"/>
+<polyline class="w" points="782.5,365 782.5,395"/>
+<text x="782.5" y="415" font-size="16" style="font-size:16px" text-anchor="middle">rstn</text>
+<polyline class="w" points="925,260 1140,260"/>
+<text x="978" y="246" font-size="16" style="font-size:16px" text-anchor="start">[511:256]</text>
+<polyline class="w" points="1000,260 1000,110 165,110 165,210 340,210"/>
+<circle cx="1000" cy="260" r="3" fill="#555"/>
+<text x="180" y="196" font-size="16" style="font-size:16px" text-anchor="start">Q: hold current lane</text>
+<polyline class="w" points="95,310 340,310"/>
+<text x="95" y="294" font-size="18" style="font-size:18px" text-anchor="start">md_data_i[255:0]</text>
+<ellipse class="s" cx="372.5" cy="465" rx="105" ry="32"/>
+<text x="372.5" y="471" font-size="18" style="font-size:18px" text-anchor="middle">cnt == 2</text>
+<polyline class="w" points="372.5,433 372.5,335"/>
+<text x="30" y="506" font-size="15" style="font-size:15px" text-anchor="start">rdata = md_data_i (wire alias)</text>
+<polygon class="s" points="340,615 405,655 405,765 340,805"/>
+<text x="353" y="666" font-size="18" style="font-size:18px" text-anchor="start">0</text>
+<text x="353" y="768" font-size="18" style="font-size:18px" text-anchor="start">1</text>
+<polyline class="w" points="405,710 640,710" marker-end="url(#a)"/>
+<rect class="s" x="640" y="645" width="285" height="160"/>
+<text x="782.5" y="719.0" font-size="18" style="font-size:18px" text-anchor="middle">rf_512bit[255:0]</text>
+<text x="782.5" y="743.0" font-size="18" style="font-size:18px" text-anchor="middle">DFF / reset = 0</text>
+<polyline class="w" points="575,772 640,772"/>
+<text x="575" y="760" font-size="16" style="font-size:16px" text-anchor="start">clk</text>
+<path class="w" d="M640 762 L654 772 L640 782"/>
+<circle class="s" cx="782.5" cy="810" r="5"/>
+<polyline class="w" points="782.5,815 782.5,845"/>
+<text x="782.5" y="865" font-size="16" style="font-size:16px" text-anchor="middle">rstn</text>
+<polyline class="w" points="925,710 1140,710"/>
+<text x="978" y="696" font-size="16" style="font-size:16px" text-anchor="start">[255:0]</text>
+<polyline class="w" points="1000,710 1000,560 165,560 165,660 340,660"/>
+<circle cx="1000" cy="710" r="3" fill="#555"/>
+<text x="180" y="646" font-size="16" style="font-size:16px" text-anchor="start">Q: hold current lane</text>
+<polyline class="w" points="95,760 340,760"/>
+<text x="95" y="744" font-size="18" style="font-size:18px" text-anchor="start">md_data_i[255:0]</text>
+<ellipse class="s" cx="372.5" cy="915" rx="105" ry="32"/>
+<text x="372.5" y="921" font-size="18" style="font-size:18px" text-anchor="middle">cnt == 10</text>
+<polyline class="w" points="372.5,883 372.5,785"/>
+<text x="30" y="956" font-size="15" style="font-size:15px" text-anchor="start">rdata = md_data_i (wire alias)</text>
+<rect class="s" x="1140" y="190" width="80" height="590"/>
+<text x="1180.0" y="467.0" font-size="18" style="font-size:18px" text-anchor="middle">Pack</text>
+<text x="1180.0" y="491.0" font-size="18" style="font-size:18px" text-anchor="middle">512-bit</text>
+<text x="1180.0" y="515.0" font-size="18" style="font-size:18px" text-anchor="middle">wiring</text>
+<polyline class="w" points="1220,485 1415,485" marker-end="url(#a)"/>
+<text x="1232" y="464" font-size="17" style="font-size:17px" text-anchor="start">rf_512bit[511:0]</text>
+<text x="30" y="1025" font-size="15" style="font-size:15px" text-anchor="start">Each lane holds unless selected. Capture uses pre-edge cnt and is not gated by enable or finish. rstn is asynchronous active-low.</text>
+</svg>

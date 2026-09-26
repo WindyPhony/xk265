@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1020" height="470" viewBox="0 0 1020 470">
+<rect width="100%" height="100%" fill="white"/>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8Z" fill="#555"/></marker></defs>
+<style>text{font-family:Arial,sans-serif;font-size:18px;fill:#222}.w{fill:none;stroke:#555;stroke-width:2}.s{fill:white;stroke:#555;stroke-width:2}</style>
+<text x="30" y="35" font-size="24" style="font-size:24px" text-anchor="start">fetch8x8 — md_4x4_x_o</text>
+<text x="35" y="75" font-size="16" style="font-size:16px" text-anchor="start">Source: shared blockcnt[6:0] register output</text>
+<rect class="s" x="480" y="100" width="195" height="270"/>
+<text x="577.5" y="84" font-size="18" style="font-size:18px" text-anchor="middle">Concatenate</text>
+<text x="577.5" y="401" font-size="18" style="font-size:18px" text-anchor="middle">wiring only</text>
+<text x="90" y="121" font-size="18" style="font-size:18px" text-anchor="start">blockcnt[4]</text>
+<polyline class="w" points="90,135 480,135"/>
+<text x="491" y="127" font-size="15" style="font-size:15px" text-anchor="start">output bit 3</text>
+<text x="90" y="186" font-size="18" style="font-size:18px" text-anchor="start">blockcnt[2]</text>
+<polyline class="w" points="90,200 480,200"/>
+<text x="491" y="192" font-size="15" style="font-size:15px" text-anchor="start">output bit 2</text>
+<text x="90" y="251" font-size="18" style="font-size:18px" text-anchor="start">blockcnt[0]</text>
+<polyline class="w" points="90,265 480,265"/>
+<text x="491" y="257" font-size="15" style="font-size:15px" text-anchor="start">output bit 1</text>
+<text x="90" y="316" font-size="18" style="font-size:18px" text-anchor="start">1&#x27;b0</text>
+<polyline class="w" points="90,330 480,330"/>
+<text x="491" y="322" font-size="15" style="font-size:15px" text-anchor="start">output bit 0</text>
+<polyline class="w" points="675,235 975,235" marker-end="url(#a)"/>
+<text x="720" y="218" font-size="18" style="font-size:18px" text-anchor="start">md_4x4_x_o[3:0]</text>
+<text x="30" y="445" font-size="15" style="font-size:15px" text-anchor="start">No additional storage. The selected blockcnt bits connect directly to output bits [3:1]; bit 0 is zero.</text>
+</svg>

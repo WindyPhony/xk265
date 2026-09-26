@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1230" height="520" viewBox="0 0 1230 520">
+<rect width="100%" height="100%" fill="white"/>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8Z" fill="#555"/></marker></defs>
+<style>text{font-family:Arial,sans-serif;font-size:18px;fill:#222}.w{fill:none;stroke:#555;stroke-width:2}.s{fill:white;stroke:#555;stroke-width:2}</style>
+<text x="30" y="35" font-size="24" style="font-size:24px" text-anchor="start">fetch8x8 — md_idx_o</text>
+<text x="55" y="137" font-size="18" style="font-size:18px" text-anchor="start">cnt[3]</text>
+<polyline class="w" points="55,150 270,150" marker-end="url(#a)"/>
+<rect class="s" x="270" y="85" width="200" height="160"/>
+<text x="370.0" y="159.0" font-size="18" style="font-size:18px" text-anchor="middle">flag / 1-bit</text>
+<text x="370.0" y="183.0" font-size="18" style="font-size:18px" text-anchor="middle">DFF / reset = 0</text>
+<polyline class="w" points="205,212 270,212"/>
+<text x="205" y="200" font-size="16" style="font-size:16px" text-anchor="start">clk</text>
+<path class="w" d="M270 202 L284 212 L270 222"/>
+<circle class="s" cx="370.0" cy="250" r="5"/>
+<polyline class="w" points="370.0,255 370.0,285"/>
+<text x="370.0" y="305" font-size="16" style="font-size:16px" text-anchor="middle">rstn</text>
+<polyline class="w" points="470,150 800,150"/>
+<text x="585" y="133" font-size="18" style="font-size:18px" text-anchor="start">flag → bit 2</text>
+<rect class="s" x="800" y="100" width="170" height="250"/>
+<text x="885.0" y="219.0" font-size="18" style="font-size:18px" text-anchor="middle">Concatenate</text>
+<text x="885.0" y="243.0" font-size="18" style="font-size:18px" text-anchor="middle">wiring only</text>
+<text x="580" y="282" font-size="18" style="font-size:18px" text-anchor="start">2&#x27;b00</text>
+<polyline class="w" points="580,295 800,295"/>
+<text x="657" y="280" font-size="15" style="font-size:15px" text-anchor="start">bits [4:3], [1:0]</text>
+<polyline class="w" points="970,215 1190,215" marker-end="url(#a)"/>
+<text x="1000" y="197" font-size="18" style="font-size:18px" text-anchor="start">md_idx_o[4:0]</text>
+<text x="55" y="362" font-size="16" style="font-size:16px" text-anchor="start">cnt comes from the shared cycle counter.</text>
+<text x="30" y="495" font-size="15" style="font-size:15px" text-anchor="start">flag captures pre-edge cnt[3] every clock, independent of enable. rstn is asynchronous active-low.</text>
+</svg>

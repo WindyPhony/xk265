@@ -1,0 +1,76 @@
+%%{ init: { "theme": "default" } }%%
+graph TD
+    subgraph "rec_top — rtl/rec/rec_top.v"
+        direction TB
+        REC_TOP["rec_top<br/>RTL Module: rec_top<br/>File: rtl/rec/rec_top.v<br/>Status: VERIFIED"]
+
+        subgraph "Intra Path — rtl/rec/rec_intra/"
+            INTRA_TOP["intra_top<br/>RTL Module: intra_top<br/>File: rtl/rec/rec_intra/intra_top.v<br/>Status: VERIFIED"]
+            INTRA_CTRL["intra_ctrl<br/>RTL Module: intra_ctrl<br/>File: rtl/rec/rec_intra/intra_ctrl.v<br/>Status: VERIFIED"]
+            INTRA_REF["intra_ref<br/>RTL Module: intra_ref<br/>File: rtl/rec/rec_intra/intra_ref.v<br/>Status: VERIFIED"]
+            INTRA_PRED_A["intra_pred (A)<br/>RTL Module: intra_pred<br/>File: rtl/rec/rec_intra/intra_pred.v<br/>Status: VERIFIED"]
+            INTRA_PRED_B["intra_pred (B)<br/>RTL Module: intra_pred<br/>File: rtl/rec/rec_intra/intra_pred.v<br/>Status: VERIFIED"]
+            INTRA_BUF["intra_buf_wrapper<br/>RTL Module: intra_buf_wrapper<br/>File: rtl/rec/rec_intra/intra_buf_wrapper.v<br/>Status: VERIFIED"]
+        end
+
+        subgraph "MC Path — rtl/rec/rec_mc/"
+            MC_TOP["mc_top<br/>RTL Module: mc_top<br/>File: rtl/rec/rec_mc/mc_top.v<br/>Status: VERIFIED"]
+            MC_CTRL["mc_ctrl<br/>RTL Module: mc_ctrl<br/>File: rtl/rec/rec_mc/mc_ctrl.v<br/>Status: VERIFIED<br/>FSM: 6 states"]
+            MC_TQ["mc_tq<br/>RTL Module: mc_tq<br/>File: rtl/rec/rec_mc/mc_tq.v<br/>Status: VERIFIED"]
+            MC_CHROMA["mc_chroma_top<br/>RTL Module: mc_chroma_top<br/>File: rtl/rec/rec_mc/mc_chroma_top.v<br/>Status: VERIFIED"]
+            MVD_TOP["mvd_top<br/>RTL Module: mvd_top<br/>File: rtl/rec/rec_mc/mvd_top.v<br/>Status: VERIFIED"]
+        end
+
+        subgraph "TQ Path — rtl/rec/rec_tq/"
+            TQ_TOP["tq_top<br/>RTL Module: tq_top<br/>File: rtl/rec/rec_tq/tq_top.v<br/>Status: VERIFIED"]
+            DCT_TOP["dct_top_2d<br/>RTL Module: dct_top_2d<br/>File: rtl/rec/rec_tq/dct_top_2d.v<br/>Status: VERIFIED"]
+            Q_IQ["q_iq<br/>RTL Module: q_iq<br/>File: rtl/rec/rec_tq/q_iq.v<br/>Status: VERIFIED<br/>Quantize + Inverse Quantize"]
+            CHROMA_QP["chroma_qp<br/>RTL Module: chroma_qp<br/>File: rtl/rec/rec_tq/chroma_qp.v<br/>Status: VERIFIED"]
+        end
+
+        subgraph "Buffer Wrapper — rtl/rec/rec_wrapper/"
+            BUF_WRAP["rec_buf_wrapper<br/>RTL Module: rec_buf_wrapper<br/>File: rtl/rec/rec_wrapper/rec_buf_wrapper.v<br/>Status: VERIFIED<br/>Residual compute + CBF gen + Clip"]
+            BUF_PRE["rec_buf_pre<br/>RTL Module: rec_buf_pre<br/>File: rtl/rec/rec_wrapper/rec_buf_pre.v<br/>Status: VERIFIED<br/>4x ram_tp_be_32x64"]
+            BUF_CEF_ROT["rec_buf_cef_rot<br/>RTL Module: rec_buf_cef_rot<br/>File: rtl/rec/rec_wrapper/rec_buf_cef_rot.v<br/>Status: VERIFIED<br/>3x rec_buf_cef"]
+            BUF_CEF["rec_buf_cef<br/>RTL Module: rec_buf_cef<br/>File: rtl/rec/rec_wrapper/rec_buf_cef.v<br/>Status: VERIFIED<br/>4x ram_sp_be_192x128"]
+            BUF_REC_ROT["rec_buf_rec_rot<br/>RTL Module: rec_buf_rec_rot<br/>File: rtl/rec/rec_wrapper/rec_buf_rec_rot.v<br/>Status: VERIFIED<br/>2x rec_buf_rec"]
+            BUF_REC["rec_buf_rec<br/>RTL Module: rec_buf_rec<br/>File: rtl/rec/rec_wrapper/rec_buf_rec.v<br/>Status: VERIFIED<br/>4x ram_sp_be_192x64"]
+            BUF_MVD_ROT["rec_buf_mvd_rot<br/>RTL Module: rec_buf_mvd_rot<br/>File: rtl/rec/rec_wrapper/rec_buf_mvd_rot.v<br/>Status: VERIFIED<br/>3x bank rotate"]
+        end
+
+        IINP["IinP_flag_gen<br/>RTL Module: IinP_flag_gen<br/>File: rtl/rec/IinP_flag_gen.v<br/>Status: VERIFIED"]
+    end
+
+    %% Hierarchy edges
+    REC_TOP -->|"instance u_intra_top"| INTRA_TOP
+    REC_TOP -->|"instance u_mc_top"| MC_TOP
+    REC_TOP -->|"instance u_tq_top"| TQ_TOP
+    REC_TOP -->|"instance u_rec_buf_wrapper"| BUF_WRAP
+    REC_TOP -->|"instance u_IinP_flag_gen"| IINP
+
+    INTRA_TOP -->|"instance u_intra_ctrl"| INTRA_CTRL
+    INTRA_TOP -->|"instance u_intra_ref"| INTRA_REF
+    INTRA_TOP -->|"instance u_intra_pred_a"| INTRA_PRED_A
+    INTRA_TOP -->|"instance u_intra_pred_b"| INTRA_PRED_B
+    INTRA_TOP -->|"instance u_intra_buf_wrapper"| INTRA_BUF
+
+    MC_TOP -->|"instance u_ctrl"| MC_CTRL
+    MC_TOP -->|"instance u_tq"| MC_TQ
+    MC_TOP -->|"instance u_mc_chroma"| MC_CHROMA
+    MC_TOP -->|"instance u_mvd_top"| MVD_TOP
+
+    TQ_TOP -->|"instance dct_2d"| DCT_TOP
+    TQ_TOP -->|"instance q_iq_0"| Q_IQ
+    TQ_TOP -->|"instance u_chroma_qp"| CHROMA_QP
+
+    BUF_WRAP -->|"instance u_buf_pre"| BUF_PRE
+    BUF_WRAP -->|"instance u_buf_cef_rot"| BUF_CEF_ROT
+    BUF_WRAP -->|"instance u_buf_rec"| BUF_REC_ROT
+    BUF_WRAP -->|"instance u_buf_mvd"| BUF_MVD_ROT
+
+    BUF_CEF_ROT -->|"instance u_buf_cef_a"| BUF_CEF
+    BUF_CEF_ROT -->|"instance u_buf_cef_b"| BUF_CEF
+    BUF_CEF_ROT -->|"instance u_buf_cef_c"| BUF_CEF
+
+    BUF_REC_ROT -->|"instance u_buf_rec_a"| BUF_REC
+    BUF_REC_ROT -->|"instance u_buf_rec_b"| BUF_REC

@@ -1,0 +1,159 @@
+%%{ init: { "theme": "default", "themeVariables": { "fontSize": "13px" } } }%%
+graph TD
+    subgraph "cabac_top — Top Module"
+        direction TB
+
+        subgraph "Stage 1: SE Prepare"
+            direction TB
+            se_fsm["<b>cabac_se_prepare FSM</b><br/>States: IDLE → FIRST → SECOND → NORMAL → END → FLUSH → EXIT"]
+            se_cu["<b>Cabac se_prepare_cu</b><br/>CU split, skip, partition, CBF, SAO, TU, coeff"]
+            se_intra["<b>Cabac se_prepare_intra</b><br/>Intra mode + prev_intra_luma_pred"]
+            se_mvd["<b>Cabac se_prepare_mvd</b><br/>MVD SE: abs_mvd, sign"]
+            se_mv["<b>Cabac se_prepare_mv</b><br/>Inter dir, ref idx, inter_pred_idc"]
+            se_coeff["<b>Cabac se_prepare_coeff</b><br/>coeff_abs + sig_coeff + last sig XY"]
+            se_addr["<b>coe_addr_trans</b><br/>Coefficient address translation"]
+        end
+
+        subgraph "Stage 2: PIPO Buffer"
+            direction TB
+            pipo["<b>cabac_pipo</b><br/>8-entry FIFO, 76-bit wide<br/>se[0:3] × {value[10], cMax[4], ctxIdx[9]}"]
+        end
+
+        subgraph "Stage 3: Binarization"
+            direction TB
+            bina["<b>cabac_bina</b><br/>4-SE parallel binarization"]
+            bina_fl["<b>FL</b> Fixed-Length"]
+            bina_tu["<b>TU</b> Truncated Unary"]
+            bina_eg["<b>EG</b> Exp-Golomb"]
+            bina_sp["<b>SP</b> Special"]
+            bina_reg["<b>REG</b> Regular"]
+        end
+
+        subgraph "Stage 4: Bin Sort"
+            direction TB
+            binsort["<b>cabac_binsort</b><br/>50-entry shift register<br/>Regular bins → front, bypass → back"]
+            binsort_out["out: up to 4 regular + bypass"]
+        end
+
+        subgraph "Stage 5: Context + RLPS"
+            direction TB
+            uctx["<b>cabac_ucontext</b><br/>188-entry context table<br/>7-bit state = mps[6] + pstateidx[5:0]<br/>4 read / 4 write ports"]
+            rlps["<b>cabac_rlps4</b><br/>4-way RLPS table<br/>64-entry ROM × 4 → rlps[7:0]<br/>+ shift computation"]
+            urange["<b>cabac_urange4</b><br/>4-cascade range update<br/>range[7:0] + renorm shift"]
+        end
+
+        subgraph "Stage 6: Bin Mix"
+            direction TB
+            binmix["<b>cabac_binmix</b><br/>32-entry bypass/regular interleave buffer<br/>Re-interleave bypass bins after parallel coding"]
+        end
+
+        subgraph "Stage 7: Low Update"
+            direction TB
+            ulow["<b>cabac_ulow</b><br/>5-cascade single-bin low update<br/>low[8:0] × 5 + buffer[34:0]"]
+            ulow_refine["<b>cabac_ulow_refine</b><br/>Carry propagation across 5 stages<br/>String-to-update + zero position"]
+        end
+
+        subgraph "Stage 8: Bit Pack"
+            direction TB
+            bitpack["<b>cabac_bitpack</b><br/>128-bit shift register mem[127:0]<br/>Byte packing + zero-byte stuffing<br/>index[6:0] + index_0[6:0]"]
+        end
+    end
+
+    subgraph "Data Flow"
+        direction TB
+        SE_PREPARE["Syntax Elements<br/>se[0:3] × {value, cMax, ctxIdx}<br/>4 SE per cycle"]
+        SE_BUF["PIPO Buffer<br/>8 × 76-bit FIFO"]
+        BINS["Binarized Bins<br/>up to 18 bins/cycle<br/>ob[17:0] × {symbol[9], ctxIdx[9]}"]
+        SORT["Sorted Bins<br/>regular: 4/cycle<br/>bypass: up to 4/cycle<br/>out_index_bypass[7:0], out_symbol_bypass[7:0]"]
+        CTX["Context Outputs<br/>out_context[0:3] = {mps[6], pstateidx[5:0]}<br/>rlps[0:3][7:0], shift[0:3][2:0]"]
+        RANGE["Updated Range<br/>range[7:0] → next range<br/>shift[0:4] normalization<br/>bypass: shift=1, range directly"]
+        MIX["Mixed Bins<br/>lpsmps[0:4], shift[0:4]<br/>r_rmps[0:4][8:0], bypass[0:4]"]
+        LOW["Low Value<br/>low[8:0] → low_next[8:0]<br/>buffer[0:4][6:0], overflow[0:4]"]
+        REFINED["Refined Bins<br/>string_to_update[34:0]<br/>zero_position[5:0]"]
+        BITOUT["Bitstream Output<br/>bs_data_o[7:0]<br/>bs_val_o (1 bit valid)"]
+    end
+
+    subgraph "Control Path"
+        direction TB
+        wack["wack: back-pressure from bina to SE prepare<br/>(via pipo full_r)"]
+        w_enable["w_enable: from bina to binsort<br/>(out_number > 0)"]
+        out_to_bin_mix["out_to_bin_mix_enable: binsort → uctx/rlps<br/>(free_space_mix >= 9)"]
+        out_to_bit_pack["out_to_bit_pack_enable: binmix → ulow/bitpack<br/>(left_space_bit_pack >= 35)"]
+        out_ready["out_ready: bitpack → output<br/>(index_0 <= 119 or index <= 119)"]
+        end_slice["end_slice: detected when<br/>context_0 == 186 && value_0 == 1<br/>→ flag_end_slice → FLUSH → EXIT"]
+    end
+
+    %% Pipeline connections
+    se_fsm --> pipo
+    pipo --> bina
+    bina --> binsort
+    binsort --> uctx
+    uctx --> rlps
+    rlps --> urange
+    urange --> binmix
+    binmix --> ulow
+    ulow --> ulow_refine
+    ulow_refine --> bitpack
+    bitpack --> BITOUT
+
+    %% Data path labels
+    SE_PREPARE -->|"wr_i + data_i[75:0]"| pipo
+    pipo -->|"data_o[75:0] + r_ena_o"| bina
+    bina -->|"ob[17:0] + out_number"| binsort
+    binsort -->|"regular bins"| uctx
+    binsort -->|"bypass bins"| binmix
+    uctx -->|"out_context[0:3]"| rlps
+    rlps -->|"rlps[0:3] + shift[0:3]"| urange
+    urange -->|"range[0:4] + shift[0:4]"| binmix
+    binmix -->|"lpsmps + shift + r_rmps + bypass"| ulow
+    ulow -->|"buffer[0:4] + overflow[0:4]"| ulow_refine
+    ulow_refine -->|"string_to_update + zero_position"| bitpack
+
+    %% Control paths
+    wack -.->|"back-pressure"| se_fsm
+    w_enable -.->|"binarization valid"| binsort
+    out_to_bin_mix -.->|"enable"| urange
+    out_to_bit_pack -.->|"enable"| binmix
+    out_ready -.->|"output ready"| bitpack
+    end_slice -.->|"slice done"| bitpack
+
+    %% Style
+    style se_fsm fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:2px
+    style se_cu fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style se_intra fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style se_mvd fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style se_mv fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style se_coeff fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style se_addr fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style pipo fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style bina fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style bina_fl fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:1px
+    style bina_tu fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:1px
+    style bina_eg fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:1px
+    style bina_sp fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:1px
+    style bina_reg fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:1px
+    style binsort fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style binsort_out fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:1px
+    style uctx fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:2px
+    style rlps fill:#fbbc04,color:#000,stroke:#e0a800,stroke-width:2px
+    style urange fill:#fbbc04,color:#000,stroke:#e0a800,stroke-width:2px
+    style binmix fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style ulow fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style ulow_refine fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style bitpack fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style SE_PREPARE fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style SE_BUF fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style BINS fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style SORT fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style CTX fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style RANGE fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style MIX fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style LOW fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style REFINED fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style BITOUT fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style wack fill:none,stroke:#666,stroke-width:1px,stroke-dasharray: 5 5
+    style w_enable fill:none,stroke:#666,stroke-width:1px,stroke-dasharray: 5 5
+    style out_to_bin_mix fill:none,stroke:#666,stroke-width:1px,stroke-dasharray: 5 5
+    style out_to_bit_pack fill:none,stroke:#666,stroke-width:1px,stroke-dasharray: 5 5
+    style out_ready fill:none,stroke:#666,stroke-width:1px,stroke-dasharray: 5 5
+    style end_slice fill:none,stroke:#666,stroke-width:1px,stroke-dasharray: 5 5

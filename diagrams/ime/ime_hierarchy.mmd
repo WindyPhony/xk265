@@ -1,0 +1,71 @@
+%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '14px'}}}%%
+graph TD
+    subgraph "ime_top (rtl/ime/ime_top.v)"
+        ctrl["ime_ctrl<br/>FSM Controller<br/>5 states"]
+        addr["ime_addressing<br/>Address Generation"]
+        dat_ori["ime_dat_array<br/>Pixel Shift Register<br/>(32×32) — ORI"]
+        dat_ref["ime_dat_array<br/>Pixel Shift Register<br/>(32×32) — REF"]
+        xfer_hor["ime_transfer<br/>Data Reordering<br/>hor→ver"]
+        xfer_ver["ime_transfer<br/>Data Reordering<br/>ver→hor"]
+        sad["ime_sad_array<br/>SAD Computation<br/>DELAY=6"]
+        cost["ime_cost_store<br/>Best Cost/MV Tracker"]
+        part_decision["ime_partition_decision<br/>Partition Decision FSM"]
+        part_engine["ime_partition_decision_engine<br/>Cost Comparison<br/>(combinational)"]
+        mv_dump["ime_mv_dump<br/>MV Output Serialization"]
+        ver_mem["ime_ver_mem<br/>Vertical Reference Memory<br/>(4-bank SRAM)"]
+    end
+
+    subgraph "ime_ver_mem"
+        ver_ctrl["ime_ver_mem_ctrl<br/>Bank Control"]
+        ver_unit["ime_ver_mem_unit<br/>SRAM Banks ×4"]
+    end
+
+    %% Instantiation hierarchy
+    ctrl -->|start_adr/dec/dmp| addr
+    ctrl -->|start_adr/dec/dmp| sad
+    ctrl -->|start_adr/dec/dmp| cost
+    ctrl -->|start_adr/dec/dmp| part_decision
+    ctrl -->|start_dmp| mv_dump
+    ctrl -->|done| ctrl
+
+    addr --> dat_ori
+    addr --> dat_ref
+    dat_ori --> xfer_hor
+    dat_ref --> xfer_hor
+    xfer_hor --> sad
+    sad --> cost
+    cost --> part_decision
+    part_decision --> part_engine
+    part_decision -->|dat_partition_o| mv_dump
+
+    ver_mem --> ver_ctrl
+    ver_mem --> ver_unit
+    ver_unit -.->|rd_dat_o| dat_ref
+
+    %% External ports
+    cmd["cmd_dat_i<br/>128-bit config"]
+    start["start_i"]
+    done_o["done_o"]
+    ref_hor["ref_hor_*<br/>Horizontal Ref IF"]
+    ref_ver["ref_ver_*<br/>Vertical Ref IF"]
+    wb["mv_wr_ena (1b)<br/>mv_wr_adr (6b)<br/>mv_wr_dat (13b)<br/>→ MV Memory"]
+    fb["dat_32_mv_i<br/>Feedback MVs"]
+
+    cmd --> ctrl
+    start --> ctrl
+    ctrl --> done_o
+    addr --> ref_hor
+    addr --> ref_ver
+    mv_dump --> wb
+    fb --> addr
+
+    %% Styling
+    classDef fsm fill:#2d4a7a,stroke:#5b9bd5,stroke-width:2px
+    classDef datapath fill:#1a3a1a,stroke:#6aaf6a,stroke-width:2px
+    classDef memory fill:#4a2a4a,stroke:#c070c0,stroke-width:2px
+    classDef external fill:#555,stroke:#aaa,stroke-width:1px,stroke-dasharray:5
+
+    class ctrl,part_decision fsm
+    class addr,dat_ori,dat_ref,xfer_hor,xfer_ver,sad,cost,part_engine,mv_dump datapath
+    class ver_mem,ver_ctrl,ver_unit memory
+    class cmd,start,done_o,ref_hor,ref_ver,wb,fb external

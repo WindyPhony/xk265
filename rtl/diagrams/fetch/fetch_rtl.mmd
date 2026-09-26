@@ -1,0 +1,180 @@
+---
+title: FETCH RTL Block Diagram
+created: 2026-09-04
+status: DRAFT
+---
+flowchart TB
+    subgraph EXT_IF["External Memory Interface"]
+        direction LR
+        EXT_START["extif_start_o [1]"]
+        EXT_DONE["extif_done_i [1]"]
+        EXT_MODE["extif_mode_o [4:0]"]
+        EXT_X["extif_x_o [11:0]"]
+        EXT_Y["extif_y_o [11:0]"]
+        EXT_W["extif_width_o [7:0]"]
+        EXT_H["extif_height_o [7:0]"]
+        EXT_DATA_IN["extif_data_i [127:0]"]
+        EXT_DATA_OUT["extif_data_o [127:0]"]
+        EXT_RDEN["extif_rden_i"]
+        EXT_WREN["extif_wren_i"]
+    end
+
+    subgraph WRAPPER["fetch_wrapper"]
+        direction TB
+
+        subgraph ARBITER["Channel Arbiter FSM"]
+            CUR_FETCH["cur_fetch [4:0]<br/>State Register"]
+            NXT_FETCH["nxt_fetch [4:0]<br/>Next State Logic"]
+            START_GEN["extif_start_o<br/>Pulse Generation"]
+            DONE_GEN["sysif_done_o<br/>Done Generation"]
+        end
+
+        subgraph DB_SUB_FSM["DB Store Sub-FSM"]
+            DB_STATE["cur_state_db_store [2:0]"]
+            DB_NXT["nxt_state_db_store [2:0]"]
+            DB_ADDR["db_store_addr_r [8:0]<br/>Beat Counter"]
+            DB_ADDR_W["db_store_addr_w [8:0]<br/>Write Address"]
+            DB_DONE["store_db_done<br/>Completion Flag"]
+        end
+
+        subgraph SHIFT["Data Shift Register"]
+            D0["extif_data_0 [127:0]"]
+            D1["extif_data_1 [127:0]"]
+            D2["extif_data_2 [127:0]"]
+            D3["extif_data_3 [127:0]"]
+            D4["extif_data_4 [127:0]"]
+            D5["extif_data_5 [127:0]"]
+            D6["extif_data_6 [127:0]"]
+        end
+
+        subgraph CUR_LUMA_IF["Current Luma Write"]
+            CL_ADDR["cur_luma_addr [6:0]"]
+            CL_CNT["cur_luma_cnt [1:0]"]
+            CL_VALID["cur_luma_valid_o"]
+            CL_DATA["cur_luma_data_o [255:0]"]
+            CL_ADDR_REORD["Address Reorder<br/>{addr[6],addr[0],addr[5:1]}"]
+        end
+
+        subgraph REF_LUMA_IF["Reference Luma Write"]
+            RL_ADDR["ref_luma_addr_o [6:0]"]
+            RL_CNT["ref_luma_cnt [3:0]"]
+            RL_DATA["ref_luma_data_o [1023:0]<br/>{D6..D0,extif_data_i}"]
+            RL_VALID["ref_luma_valid_o"]
+        end
+
+        subgraph CUR_CHROMA_IF["Current Chroma Write"]
+            CC_ADDR["cur_chroma_addr [5:0]"]
+            CC_CNT["cur_chroma_cnt [1:0]"]
+            CC_VALID["cur_chroma_valid_o"]
+            CC_DATA_U["cur_chroma_data_u [255:0]<br/>Even bytes extraction"]
+            CC_DATA_V["cur_chroma_data_v [255:0]<br/>Odd bytes extraction"]
+            CC_DATA["cur_chroma_data_o [255:0]<br/>U then V"]
+        end
+
+        subgraph REF_CHROMA_IF["Reference Chroma Write"]
+            RCH_ADDR["ref_chroma_addr_o [5:0]"]
+            RCH_CNT["ref_chroma_cnt [3:0]"]
+            RCH_DATA_U["ref_chroma_u_data [1023:0]<br/>Even bytes extraction"]
+            RCH_DATA_V["ref_chroma_v_data [1023:0]<br/>Odd bytes extraction"]
+            RCH_DATA["ref_chroma_data_o [1023:0]<br/>{U, V}"]
+        end
+
+        subgraph DB_IF["DB Store/Load Interface"]
+            DB_STORE_ADDR["db_store_addr_o [7:0]<br/>MUX by state"]
+            DB_REC_ADDR["db_rec_addr_o [4:0]"]
+            DB_REC_DATA["db_rec_data_o [127:0]<br/>NV12→Planar"]
+            DB_REC_EN["db_rec_en_o"]
+            DB_STORE_DATA["Data MUX<br/>Luma/Chroma + addr[0]"]
+        end
+
+        subgraph XY_CALC["Coordinate Calculation"]
+            LUMA_REF_X["luma_ref_x_s [11:0]<br/>ref_x * 64 + 64"]
+            LUMA_REF_Y["luma_ref_y_s [11:0]<br/>ref_y * 64 - 32"]
+            REF_X_R1["luma_ref_x_s_r1 [11:0]<br/>2-cycle delay"]
+            REF_X_R2["luma_ref_x_s_r2 [11:0]"]
+            REF_Y_R1["luma_ref_y_s_r1 [11:0]"]
+            REF_Y_R2["luma_ref_y_s_r2 [11:0]"]
+        end
+    end
+
+    subgraph CUR_LUMA_BUF["fetch_cur_luma"]
+        direction TB
+        subgraph CL_ROT["Rotation Logic"]
+            ROT_I["rotate_i [2:0]<br/>0-4 INTRA"]
+            ROT_P["rotate_p [1:0]<br/>0-2 INTER"]
+            ROT_IME["rotate_ime [0]<br/>0-1 IME"]
+        end
+        subgraph CL_MEM["Memory Arrays"]
+            CI["5× cur_i_XX<br/>mem_lipo_1p_128x64x4<br/>128B × 64 rows"]
+            CP["3× cur_p_XX<br/>mem_lipo_1p_128x64x4<br/>128B × 64 rows"]
+            CIM["2× cur_ime_XX<br/>mem_lipo_1p_128x64x4<br/>128B × 64 rows"]
+        end
+        subgraph CL_READ["Read Port MUX"]
+            PREI_MUX["→ prei_cur_pel_o [255:0]"]
+            POSI_MUX["→ posi_cur_pel_o [255:0]"]
+            IME_MUX["→ ime_cur_pel_o [255:0]"]
+            FME_MUX["→ fme_cur_pel_o [255:0]"]
+            REC_MUX["→ rec_cur_luma_pel_o [255:0]"]
+            DB_MUX["→ db_cur_luma_pel_o [255:0]"]
+        end
+    end
+
+    subgraph REF_LUMA_BUF["fetch_ref_luma"]
+        direction TB
+        subgraph RL_ROT["Rotation Logic"]
+            ROT_RI["rotate_ime [1:0]<br/>0-3 IME"]
+            ROT_RF["rotate_fme [2:0]<br/>0-4 FME"]
+        end
+        subgraph RL_MEM["Memory Arrays"]
+            RIM["4× ref_luma_ime_XX<br/>fetch_rf_1p_128x512<br/>128 rows × 512b"]
+            RFM["5× ref_luma_fme_XX<br/>fetch_rf_1p_128x512<br/>128 rows × 512b"]
+        end
+        subgraph RL_ASSEMBLY["Search Window Assembly"]
+            IME_ASM["IME: {ime02,ime03,ime00}<br/>= 192 × 8b"]
+            FME_ASM["FME: {fme0X,fme0Y,fme0Z}<br/>= 192 × 8b"]
+            BOUNDARY["Boundary Handling<br/>Left/Right/Top clamp"]
+            IME_SHIFT["IME H-Shift<br/>ime_ref_x × 8 pixels"]
+            FME_SHIFT["FME H-Shift<br/>fme_ref_x × 8 pixels"]
+            DOWNSAMPLE["IME Downsample<br/>Extract every other pixel"]
+        end
+    end
+
+    subgraph CUR_CHROMA_BUF["fetch_cur_chroma"]
+        CC_ROT["rotate [1:0]<br/>0-2"]
+        CC_MEM["3× cur_XX<br/>mem_lipo_1p_64x64x4<br/>64B × 64 rows"]
+    end
+
+    subgraph REF_CHROMA_BUF["fetch_ref_chroma"]
+        RCH_ROT["rotate_rec [1:0]<br/>0-3"]
+        RCH_U["4× ref_u_recXX<br/>fetch_rf_1p_64x256<br/>64 rows × 256b"]
+        RCH_V["4× ref_v_recXX<br/>fetch_rf_1p_64x256<br/>64 rows × 256b"]
+        RCH_MUX["UV MUX<br/>rec_ref_sel_i"]
+    end
+
+    subgraph DB_BUF["fetch_db"]
+        direction TB
+        DB_WR_ROT["wr_rotate [1:0]<br/>0-2"]
+        DB_RD_ROT["rd_rotate [1:0]<br/>0-2"]
+        DB_REC_BUF["rec_buf [0]<br/>2-way"]
+        DB_STORE["3× mem_bilo_db<br/>triple-buffer"]
+        DB_REC["2× fetch_ram_1p_128x32<br/>ping-pong rec"]
+    end
+
+    LUMA_CHROMA_MUX["Luma/Chroma MUX<br/>rec_cur_sel_i[1]<br/>db_cur_sel_i[1]"]
+
+    %% Connections
+    WRAPPER -->|"cur_luma_data_o [255:0]<br/>cur_luma_addr_o [6:0]<br/>cur_luma_valid_o"| CUR_LUMA_BUF
+    WRAPPER -->|"ref_luma_data_o [1023:0]<br/>ref_luma_addr_o [6:0]<br/>ref_luma_valid_o"| REF_LUMA_BUF
+    WRAPPER -->|"cur_chroma_data_o [255:0]<br/>cur_chroma_addr_o [5:0]<br/>cur_chroma_valid_o"| CUR_CHROMA_BUF
+    WRAPPER -->|"ref_chroma_data_o [1023:0]<br/>ref_chroma_addr_o [5:0]<br/>ref_chroma_valid_o"| REF_CHROMA_BUF
+    WRAPPER -->|"db_rec_addr_o [4:0]<br/>db_rec_data_o [127:0]<br/>db_rec_en_o"| DB_BUF
+    WRAPPER -->|"db_store_addr_o [7:0]<br/>db_store_data_i [255:0]"| DB_BUF
+
+    CUR_LUMA_BUF -->|"prei_cur_pel_o"| LUMA_CHROMA_MUX
+    CUR_LUMA_BUF -->|"posi_cur_pel_o"| LUMA_CHROMA_MUX
+    CUR_LUMA_BUF -->|"ime_cur_pel_o"| LUMA_CHROMA_MUX
+    CUR_LUMA_BUF -->|"fme_cur_pel_o"| LUMA_CHROMA_MUX
+    CUR_LUMA_BUF -->|"rec_cur_luma_pel_o"| LUMA_CHROMA_MUX
+    CUR_LUMA_BUF -->|"db_cur_luma_pel_o"| LUMA_CHROMA_MUX
+    CUR_CHROMA_BUF -->|"rec_cur_chroma_pel_o"| LUMA_CHROMA_MUX
+    CUR_CHROMA_BUF -->|"db_cur_chroma_pel_o"| LUMA_CHROMA_MUX

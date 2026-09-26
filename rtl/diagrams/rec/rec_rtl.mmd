@@ -1,0 +1,149 @@
+%%{ init: { "theme": "default" } }%%
+graph TD
+    subgraph "REC Subsystem — rtl/rec/"
+        direction TB
+
+        %% ===== EXTERNAL INPUTS =====
+        START["start_i<br/>1b"]
+        TYPE["type_i<br/>1b<br/>INTRA/INTER"]
+        QP["qp_i<br/>6b"]
+        PART_INTRA["intra_partition_i<br/>85b"]
+        PART_INTER["inter_partition_i<br/>42b"]
+        SKIP_FLAG["rec_skip_flag_i<br/>85b"]
+        CUR_DAT["cur_rd_dat_i<br/>256b PIXEL*32"]
+        MV_DAT["mv_rd_dat_i<br/>20b FMV*2"]
+        REF_DAT["ref_rd_dat_i<br/>64b PIXEL*8"]
+        FME_DAT["pre_fme_rd_dat_i<br/>256b PIXEL*32"]
+        CTU_POS["ctu_x/y_cur_i, ctu_x/y_all_i"]
+        CTU_RES["ctu_x/y_res_i"]
+
+        subgraph "rec_top — Top Control"
+            direction TB
+            TYPE_R["type_r Register<br/>(INTRA/INTER select)<br/>Status: VERIFIED<br/>rtl/rec/rec_top.v:322-341"]
+            START_R["start_r Register<br/>Status: VERIFIED<br/>rtl/rec/rec_top.v:344-351"]
+            DONE["done_o = intra_done | inter_done<br/>Status: VERIFIED<br/>rtl/rec/rec_top.v:354"]
+        end
+
+        subgraph "Intra Path — rec_intra/"
+            direction TB
+            IC["intra_ctrl<br/>FSM: IDLE→ENC_Y→...→DONE<br/>Status: VERIFIED<br/>rtl/rec/rec_intra/intra_ctrl.v"]
+            IR["intra_ref<br/>Reference pixel memory<br/>row/col/fra SRAM<br/>Status: VERIFIED<br/>rtl/rec/rec_intra/intra_ref.v"]
+            IPA["intra_pred engine A<br/>(left half 4x8)<br/>Status: VERIFIED<br/>rtl/rec/rec_intra/intra_pred.v"]
+            IPB["intra_pred engine B<br/>(right half 4x8)<br/>Status: VERIFIED<br/>rtl/rec/rec_intra/intra_pred.v"]
+            IB["intra_buf_wrapper<br/>row/col/fra SRAMs<br/>Status: VERIFIED<br/>rtl/rec/rec_intra/intra_buf_wrapper.v"]
+        end
+
+        subgraph "MC Path — rec_mc/"
+            direction TB
+            MCC["mc_ctrl<br/>FSM: IDLE→TQ_LUMA→MC_CB→TQ_CB→MC_CR→TQ_CR→DONE<br/>Status: VERIFIED<br/>rtl/rec/rec_mc/mc_ctrl.v"]
+            MCT["mc_tq<br/>Tile processing<br/>Status: VERIFIED<br/>rtl/rec/rec_mc/mc_tq.v"]
+            MCCH["mc_chroma_top<br/>Chroma interpolation<br/>Status: VERIFIED<br/>rtl/rec/rec_mc/mc_chroma_top.v"]
+            MVD["mvd_top<br/>MV difference calc<br/>Status: VERIFIED<br/>rtl/rec/rec_mc/mvd_top.v"]
+        end
+
+        subgraph "TQ — Transform/Quantization — rec_tq/"
+            direction TB
+            TQ["tq_top<br/>Control counters<br/>Status: VERIFIED<br/>rtl/rec/rec_tq/tq_top.v"]
+            DCT["dct_top_2d<br/>2D DCT/IDCT<br/>32-coeff datapath<br/>Status: VERIFIED<br/>rtl/rec/rec_tq/dct_top_2d.v"]
+            QIQ["q_iq<br/>Quantize + Inverse Quantize<br/>32-coeff datapath<br/>Status: VERIFIED<br/>rtl/rec/rec_tq/q_iq.v"]
+            CQP["chroma_qp<br/>Chroma QP derivation<br/>Status: VERIFIED<br/>rtl/rec/rec_tq/chroma_qp.v"]
+        end
+
+        subgraph "Buffer Wrapper — rec_wrapper/"
+            direction TB
+            BW["rec_buf_wrapper<br/>Residual compute: cur - pred<br/>Reconstruction: pred + residual<br/>Clip to [0,255]<br/>CBF generation<br/>Status: VERIFIED<br/>rtl/rec/rec_wrapper/rec_buf_wrapper.v:742-1274"]
+            BP["rec_buf_pre<br/>Prediction buffer<br/>4x ram_tp_be_32x64<br/>(4 banks, dual-port)<br/>Status: VERIFIED<br/>rtl/rec/rec_wrapper/rec_buf_pre.v:377-415"]
+            BC["rec_buf_cef_rot → rec_buf_cef<br/>Coefficient buffer<br/>3-buffer rotation<br/>4x ram_sp_be_192x128<br/>(192 deep, single-port)<br/>Status: VERIFIED<br/>rtl/rec/rec_wrapper/rec_buf_cef.v:412-446"]
+            BR["rec_buf_rec_rot → rec_buf_rec<br/>Reconstructed pixel buffer<br/>2-buffer rotation<br/>4x ram_sp_be_192x64<br/>(192 deep, single-port)<br/>Status: VERIFIED<br/>rtl/rec/rec_wrapper/rec_buf_rec.v:408-442"]
+            BM["rec_buf_mvd_rot<br/>Motion vector buffer<br/>3-buffer rotation<br/>Status: VERIFIED<br/>rtl/rec/rec_wrapper/rec_buf_mvd_rot.v"]
+        end
+
+        subgraph "IinP Flag — IinP_flag_gen.v"
+            IINP["IinP_flag_gen<br/>Tracks I-blocks in P-frames<br/>Per-CTU array + top/left flags<br/>Status: VERIFIED<br/>rtl/rec/IinP_flag_gen.v"]
+        end
+    end
+
+    %% ===== DATA FLOW =====
+    START -->|"type_r select"| TYPE_R
+    START --> START_R
+    TYPE_R -->|"INTRA"| IC
+    TYPE_R -->|"INTER"| MCC
+
+    %% Intra data flow
+    IC -->|"ref_start, mode, size"| IR
+    IR -->|"ref_tl, ref_t[32], ref_r[32], ref_l[32], ref_d[32]"| IPA
+    IR -->|"same refs"| IPB
+    IPA -->|"pred_4x8 left"| IB
+    IPB -->|"pred_4x8 right"| IB
+    IC -->|"pre_start, 4x4_x/y"| IPA
+    IC -->|"pre_start, 4x4_x+4/y"| IPB
+    IB -->|"rec_done (from ref_done)"| DONE
+
+    %% MC data flow
+    MCC -->|"tq_start, tq_sel"| MCT
+    MCC -->|"chroma_start, sel"| MCCH
+    MCC -->|"mvd_access"| MVD
+    MVD -->|"mv_rden, mv_rdaddr"| MV_DAT
+    MCCH -->|"ref_rden, ref_idx"| REF_DAT
+    MCCH -->|"pred_wr → pre_wr"| BW
+    MCT -->|"fme_rd → read pre_buf"| BP
+    MCT -->|"pre_wr → write pre_buf"| BW
+    MCT -->|"rec_done_i"| MCC
+
+    %% TQ data flow
+    TQ -->|"res_i → residual 288b"| DCT
+    TQ -->|"inverse feedback"| QIQ
+    DCT -->|"o_d[15:0] x32 → i_d[15:0]"| QIQ
+    QIQ -->|"cef_wen, cef_widx, cef_data_o"| BC
+    QIQ -->|"cef_ren, cef_ridx ← cef_data_i"| BC
+    TQ -->|"rec_val, rec_idx, rec_data 10b x32"| BW
+    CQP -->|"qp_yuv"| QIQ
+
+    %% Buffer data flow
+    BW -->|"res_wr: (cur - pred) 10b x32"| TQ
+    BW -->|"cur_rd_ena/sel/siz/4x4_x/y/idx"| CUR_DAT
+    BW -->|"pre_rd → read pred_buf"| BP
+    BW -->|"rsp_wr_ena/idx/data → clip → rec_wr"| BR
+    BW -->|"mvd_wr_ena/adr/dat"| BM
+    BW -->|"cbf_y/u/v_r → 256b each"| DONE
+    BW -->|"rec_pip_rd/wr, cef_pip_rd, mvd_pip_rd"| DONE
+    BW -.->|"rotate_i (sys_start_d1)"| BW
+
+    %% IinP
+    TYPE_R -->|"type_r"| IINP
+    TYPE -->|"type_i"| IINP
+    CTU_POS --> IINP
+    START_R --> IINP
+    IINP -->|"IinP_flag_o [3b]<br/>fme_IinP_flag_o [4b]"| DONE
+
+    %% ===== CONTROL FLOW =====
+    IC -.->|"loop_sel, loop_size,<br/>loop_mode, loop_position"| IR
+    IC -.->|"pre_start"| IPA
+    IC -.->|"pre_start"| IPB
+
+    MCC -.->|"tq_sel"| MCT
+    MCC -.->|"chroma_sel"| MCCH
+
+    TQ -.->|"i_inverse (forward)"| DCT
+    TQ -.->|"counter_en, counter_val"| TQ
+
+    BW -.->|"pre_rd_bt_ena_r<br/>(block read before TQ)"| BW
+    BW -.->|"pre_rd_at_ena_w<br/>(read after TQ)"| BW
+
+    %% ===== MEMORY =====
+    BP -.- BP_MEM["ram_tp_be_32x64 ×4<br/>DP, byte-en<br/>64 depth × 32b (8b ×4)"]
+    BC -.- BC_MEM["ram_sp_be_192x128 ×4<br/>SP, byte-en<br/>192 depth × 128b<br/>(COEFF_WIDTH ×16 ×4)"]
+    BR -.- BR_MEM["ram_sp_be_192x64 ×4<br/>SP, byte-en<br/>192 depth × 64b<br/>(PIXEL_WIDTH ×8 ×4)"]
+    BM -.- BM_MEM["3-bank rotate<br/>(2*MVD_WIDTH+1) × addr"]
+
+    %% ===== STYLES =====
+    classDef control fill:#FFE4B5,stroke:#FF8C00,color:#000
+    classDef datapath fill:#B0E0E6,stroke:#4682B4,color:#000
+    classDef memory fill:#98FB98,stroke:#2E8B57,color:#000
+    classDef external fill:#F0E68C,stroke:#DAA520,color:#000
+
+    class IC,MC,MCC control
+    class DCT,QIQ,IPA,IPB,MCCH datapath
+    class BP,BC,BR,BM,BW memory
+    class START,TYPE,QP,PART_INTRA,PART_INTER,SKIP_FLAG,CUR_DAT,MV_DAT,REF_DAT,FME_DAT,CTU_POS,CTU_RES external
+    class BP_MEM,BC_MEM,BR_MEM,BM_MEM memory

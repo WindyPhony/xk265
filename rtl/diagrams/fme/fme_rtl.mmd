@@ -1,0 +1,90 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '12px', 'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'lineColor': '#333' }}}%%
+graph LR
+    subgraph EXT["External Interfaces"]
+        IME["IME<br/><i>fimeif_mv_data_i</i><br/>2×FMV_WIDTH"]
+        REF["Ref SRAM<br/><i>ref_pel_i</i><br/>64×PIXEL_WIDTH"]
+        CUR["Cur SRAM<br/><i>cur_pel_i</i><br/>32×PIXEL_WIDTH"]
+        MVS["MV SRAM<br/><i>mcif_mv_data_i/o</i><br/>2×FMV_WIDTH"]
+        SYS["System<br/><i>fme_cost_o</i><br/>FME_COST_WIDTH"]
+    end
+
+    subgraph CTRL["fme_ctrl (fme_ctrl.v)"]
+        FSM["FSM<br/>13 states<br/>IDLE→DONE_MC"]
+        REFGEN["Ref Addr Gen<br/><i>ref_idx_x/y_o</i><br/>8+8 bits"]
+        IMVREG["IMV Register<br/><i>imv_x/y</i><br/>signed FMV_WIDTH"]
+    end
+
+    subgraph INTERP["Interpolation Pipeline"]
+        subgraph IP8X8["fme_interpolator_8x8"]
+            IP8PEL["fme_interpolator_8pel<br/>9× fme_interpolator<br/>Horizontal: 7-tap/4-tap"]
+            IPVH["fme_ip_half_ver<br/>8 vert-half + 9 diagonal<br/>7-stage shift regs"]
+            IPVQ["fme_ip_quarter_ver<br/>48× fme_interpolator<br/>7-stage shift regs"]
+        end
+    end
+
+    subgraph SATD_ENG["SATD Engine"]
+        SATDGEN["fme_satd_gen<br/>9× fme_satd_8x8<br/>Current pixel fetch"]
+        SATD9["fme_satd_8x8 ×9<br/>Hadamard Transform<br/>SATD_WIDTH=18"]
+    end
+
+    subgraph COST["Cost Computation"]
+        FCOST["fme_cost<br/>cost = ΣSATD + λ×MVD<br/>4 partitions"]
+        CRAM["db_mv_ram_sp_64x20<br/>Cost RAM"]
+    end
+
+    subgraph PRED["Prediction"]
+        PRED["fme_pred<br/>9-candidate MUX<br/>32×PIXEL_WIDTH out"]
+    end
+
+    subgraph MV_SYS["MV System"]
+        MVBUF["fme_mv_buffer<br/>Top: db_mv_ram_sp_512x20<br/>Left: 2× reg[7:0]"]
+        MVCANDI["fme_mv_candidate_prepare<br/>5 candidates: A0,A1,B0,B1,B2<br/>6-state FSM"]
+        SKIP["fme_skip<br/>Skip SATD + threshold<br/>85 skip flags"]
+    end
+
+    LAMBDA["qp_lambda_table<br/>QP[5:0] → λ[7:0]"]
+
+    %% Control paths (dashed)
+    FSM -.->|"ip_start, mv_x/y<br/>frac_x/y, half_flag<br/>ip_idx[5:0]"| IP8X8
+    FSM -.->|"ref_rden, ref_idx<br/>8+8"| REFGEN
+    FSM -.->|"skip_start"| SKIP
+    FSM -.->|"predicted_en"| PRED
+    REFGEN -.->|"8+8"| REF
+    REFGEN -.->|"5-bit cur addr"| CUR
+
+    %% Data paths (solid)
+    IME ==>|"imv [2×10]"| IMVREG
+    IMVREG ==>|"imv_x/y<br/>signed 10"| IP8X8
+    REF ==>|"16×8 = 128b"| IP8PEL
+    IP8PEL ==>|"half[0..8]<br/>q1[0..8], q3[0..8]<br/>2×8 each"| IPVH
+    IP8PEL ==>|"q1[0..8], q3[0..8]<br/>h[0..8]<br/>2×8 each"| IPVQ
+    IPVH ==>|"vhalf[0..7], d[0..8]<br/>8 each"| SATDGEN
+    IPVQ ==>|"vq_1_x[0..7], vq_3_x[0..7]<br/>vhalf_2_x[0..7], vpel_0_x[0..7]<br/>8 each"| SATDGEN
+    CUR ==>|"32×8 = 256b"| SATDGEN
+    SATDGEN ==>|"candi pixel[0..8]<br/>8×8 each"| SATD9
+    SATD9 ==>|"satd[0..8]<br/>18b each"| FCOST
+    FCOST ==>|"fmv_best<br/>2×10"| MVS
+    FCOST ==>|"cost<br/>20b"| CRAM
+    CRAM -.->|"cost_rd_dat<br/>20b"| FCOST
+    LAMBDA -.->|"λ[7:0]"| FCOST
+    PRED ==>|"32×8 = 256b<br/>pred_pixel"| SYS
+    PRED -.->|"pred_wren[3:0]<br/>pred_addr[6:0]"| SYS
+
+    %% MV system connections
+    MVS ==>|"fmv_data_i<br/>2×10"| MVBUF
+    MVBUF -.->|"lft_mv<br/>2×10"| MVCANDI
+    MVBUF -.->|"top_mv<br/>2×10"| MVCANDI
+    MVS -.->|"cur_fmv<br/>2×10"| MVCANDI
+    MVCANDI -.->|"mv_a0..b2<br/>val+dat<br/>5×(1+2×10)"| SKIP
+    SKIP ==>|"fmv_wr<br/>2×10"| MVS
+    SKIP ==>|"skip_idx[85×4]<br/>skip_flg[85]"| SYS
+    SKIP -.->|"mc_skip_flg"| CTRL
+    FCOST -.->|"cost_done<br/>best_sp[3:0]"| FSM
+
+    style EXT fill:#f5f5f5,stroke:#666
+    style CTRL fill:#e8f0fe,stroke:#4285f4
+    style INTERP fill:#e6f4ea,stroke:#34a853
+    style SATD_ENG fill:#fef7e0,stroke:#fbbc04
+    style COST fill:#fce8e6,stroke:#ea4335
+    style PRED fill:#f3e8fd,stroke:#a142f4
+    style MV_SYS fill:#e8f4f8,stroke:#17a2b8

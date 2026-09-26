@@ -1,0 +1,110 @@
+%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '13px'}}}%%
+graph TD
+    subgraph "CTRL (ime_ctrl)"
+        IDLE["IDLE (3'd0)"]
+        BUSY_ADR["BUSY_ADR (3'd1)"]
+        BUSY_DEC["BUSY_DEC (3'd2)"]
+        BUSY_DMP["BUSY_DMP (3'd3)"]
+        UPDATE["UPDATE (3'd4)"]
+    end
+
+    %% FSM transitions (actual RTL order)
+    IDLE -->|start_i| UPDATE
+    UPDATE --> BUSY_ADR
+    BUSY_ADR -->|done_adr_i| BUSY_DEC
+    BUSY_DEC -->|"dec_done_w & !cmd_done_w"| UPDATE
+    BUSY_DEC -->|"dec_done_w & cmd_done_w"| BUSY_DMP
+    BUSY_DMP -->|done_dmp_i| IDLE
+    UPDATE -.->|"(last cmd)"| DONE["done_o = 1"]
+
+    subgraph "DATAPATH"
+        direction TB
+
+        subgraph "Address Generation (ime_addressing)"
+            CFG["Config Parse<br/>cmd_dat_i → center/length/slope"]
+            ADR_GEN["Address Computation<br/>adr_x_m_qd[3:0]<br/>adr_y_m_qd[3:0]"]
+            FB_MV["Feedback MV<br/>dat_32_mv_i<br/>offsets addresses"]
+            CFG --> ADR_GEN
+            FB_MV --> ADR_GEN
+        end
+
+        subgraph "Pixel Fetch"
+            ORI_MEM["Original Memory<br/>ori_ena/adr_x/adr_y"]
+            REF_MEM["Reference Memory<br/>ref_*_ena/adr_x/adr_y"]
+        end
+
+        subgraph "Pixel Array (ime_dat_array ×2)"
+            ORI_DAT["ORI Dat Array<br/>32×32 shift register"]
+            REF_DAT["REF Dat Array<br/>32×32 shift register"]
+        end
+
+        subgraph "Data Reorder (ime_transfer ×2)"
+            XFER["hor→ver / ver→hor<br/>192×64 ↔ 128×128<br/>blocks of 32×32"]
+        end
+
+        subgraph "SAD Computation (ime_sad_array)"
+            SAD["SAD Array<br/>1024 pixels × 2<br/>Pipeline: 6 cycles"]
+            SAD_OUT["Multi-size SAD<br/>4×4..32×32"]
+        end
+
+        subgraph "Cost Store (ime_cost_store)"
+            CST_IN["cst_sad_0/1/2"]
+            CST_BEST["Best Cost/MV<br/>per partition size"]
+        end
+
+        subgraph "Partition Decision"
+            DEC_ENGINE["Engine<br/>(combinational)<br/>1n×1n / 1n×2n / 2n×1n / 2n×2n"]
+            PART_OUT["dat_partition_o<br/>[41:0]"]
+        end
+
+        subgraph "MV Dump (ime_mv_dump)"
+            DUMP["MV Serialization<br/>→ wb_ena/adr/dat"]
+        end
+    end
+
+    %% Data flow
+    ADR_GEN -->|ori_ena/adr_x/adr_y| ORI_MEM
+    ADR_GEN -->|ref_*_ena/adr_x/adr_y| REF_MEM
+    ORI_MEM --> ORI_DAT
+    REF_MEM --> REF_DAT
+    ORI_DAT --> XFER
+    REF_DAT --> XFER
+    XFER --> SAD
+    SAD --> SAD_OUT
+    SAD_OUT --> CST_IN
+    CST_IN --> CST_BEST
+    CST_BEST --> DEC_ENGINE
+    DEC_ENGINE --> PART_OUT
+    PART_OUT --> DUMP
+
+    %% Vertical reference memory
+    subgraph "ime_ver_mem (conditional)"
+        VER_WR["Write IF<br/>wr_dir/ena/adr_x/adr_y/dat"]
+        VER_RD["Read IF<br/>rd_ena/adr_x/adr_y → rd_dat_o"]
+        VER_BUF["4-bank SRAM<br/>64×4 bits × 4 banks<br/>ping-pong buffer"]
+        VER_WR --> VER_BUF
+        VER_BUF --> VER_RD
+    end
+    REF_MEM -.->|wr_dat from ref_hor| VER_WR
+    VER_RD -.->|rd_dat_o → dat_ver| REF_DAT
+
+    %% Control signals
+    BUSY_ADR -.->|"start_adr_o"| ADR_GEN
+    BUSY_ADR -.->|"start_adr_o"| SAD
+    BUSY_DEC -.->|"start_dec_o"| DEC_ENGINE
+    BUSY_DMP -.->|"start_dmp_o"| DUMP
+
+    %% Output
+    DUMP --> WB_OUT["mv_wr_ena (1b)<br/>mv_wr_adr (6b)<br/>mv_wr_dat (13b)<br/>→ MV Memory"]
+
+    %% Styling
+    classDef fsm fill:#2d4a7a,stroke:#5b9bd5,stroke-width:2px
+    classDef datapath fill:#1a3a1a,stroke:#6aaf6a,stroke-width:2px
+    classDef memory fill:#4a2a4a,stroke:#c070c0,stroke-width:2px
+    classDef control fill:#5a3a0a,stroke:#c0a050,stroke-width:2px,stroke-dasharray:5
+
+    class IDLE,BUSY_ADR,BUSY_DEC,BUSY_DMP,UPDATE,DONE fsm
+    class CFG,ADR_GEN,FB_MV,XFER,SAD,SAD_OUT,CST_IN,CST_BEST,DEC_ENGINE,PART_OUT,DUMP datapath
+    class ORI_MEM,REF_MEM,ORI_DAT,REF_DAT memory
+    class VER_WR,VER_RD,VER_BUF memory
+    class WB_OUT control

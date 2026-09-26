@@ -1,0 +1,96 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '14px' }}}%%
+graph TD
+    subgraph "rec_top (rtl/rec/rec_top.v)"
+        direction TB
+
+        subgraph "Intra Prediction"
+            intra_top["intra_top<br/><i>rtl/rec/rec_intra/intra_top.v</i>"]
+            intra_ctrl["intra_ctrl"]
+            intra_pred["intra_pred"]
+            intra_ref["intra_ref"]
+            intra_buf_wrapper["intra_buf_wrapper"]
+            intra_top --> intra_ctrl
+            intra_top --> intra_pred
+            intra_top --> intra_ref
+            intra_top --> intra_buf_wrapper
+        end
+
+        subgraph "Motion Compensation"
+            mc_top["mc_top<br/><i>rtl/rec/rec_mc/mc_top.v</i>"]
+            mc_ctrl["mc_ctrl<br/><i>7-state FSM</i>"]
+            mc_tq["mc_tq<br/><i>3-state FSM</i>"]
+            mvd_top["mvd_top<br/><i>LCU FSM</i>"]
+            mc_chroma_top["mc_chroma_top<br/><i>4-state FSM</i>"]
+            mc_chroma_filter["mc_chroma_filter"]
+            mc_chroma_ip_1p["mc_chroma_ip_1p"]
+            mc_chroma_ip4x4["mc_chroma_ip4x4"]
+            mc_top --> mc_ctrl
+            mc_top --> mc_tq
+            mc_top --> mvd_top
+            mc_top --> mc_chroma_top
+            mc_chroma_top --> mc_chroma_filter
+            mc_chroma_top --> mc_chroma_ip_1p
+            mc_chroma_top --> mc_chroma_ip4x4
+        end
+
+        subgraph "Transform + Quantization"
+            tq_top["tq_top<br/><i>rtl/rec/rec_tq/tq_top.v</i>"]
+            dct_top_2d["dct_top_2d<br/><i>2D DCT/IDCT</i>"]
+            be["be<br/><i>Butterfly Engine</i>"]
+            pe["pe / pe_i"]
+            offset_shift["offset_shift"]
+            mux0_3["mux0..mux3"]
+            mux32_1["mux32_1"]
+            re["re<br/><i>Reconstruction Adder</i>"]
+            re_in_ctl["re_in_ctl"]
+            re_level0_3["re_level0..3"]
+            re_out_ctl["re_out_ctl"]
+            q_iq["q_iq<br/><i>Quant/Dequant</i>"]
+            quan["quan"]
+            mod["mod"]
+            chroma_qp["chroma_qp"]
+            tq_top --> dct_top_2d
+            tq_top --> q_iq
+            tq_top --> chroma_qp
+            dct_top_2d --> be
+            dct_top_2d --> pe
+            dct_top_2d --> offset_shift
+            dct_top_2d --> mux0_3
+            dct_top_2d --> mux32_1
+            dct_top_2d --> re
+            re --> re_in_ctl
+            re --> re_level0_3
+            re --> re_out_ctl
+            q_iq --> quan
+            q_iq --> mod
+        end
+
+        subgraph "Buffer Wrapper"
+            rec_buf_wrapper["rec_buf_wrapper<br/><i>rtl/rec/rec_wrapper/rec_buf_wrapper.v</i>"]
+            rec_buf_pre["rec_buf_pre<br/><i>Prediction Buffer</i>"]
+            rec_buf_rec_rot["rec_buf_rec_rot<br/><i>Rec Rotation</i>"]
+            rec_buf_cef_rot["rec_buf_cef_rot<br/><i>Coeff Rotation</i>"]
+            rec_buf_mvd_rot["rec_buf_mvd_rot<br/><i>MVD Rotation</i>"]
+            rec_buf_wrapper --> rec_buf_pre
+            rec_buf_wrapper --> rec_buf_rec_rot
+            rec_buf_wrapper --> rec_buf_cef_rot
+            rec_buf_wrapper --> rec_buf_mvd_rot
+        end
+
+        IinP_flag_gen["IinP_flag_gen<br/><i>rtl/rec/IinP_flag_gen.v</i>"]
+    end
+
+    intra_top -.->|"prediction pixels"| rec_buf_pre
+    mc_tq -.->|"prediction pixels"| rec_buf_pre
+    rec_buf_pre -.->|"residual"| tq_top
+    tq_top -.->|"coefficients"| rec_buf_cef
+    tq_top -.->|"inverse residual"| rec_buf_wrapper
+    rec_buf_wrapper -.->|"reconstructed"| rec_buf_rec_rot
+    mvd_top -.->|"MVD"| rec_buf_mvd_rot
+
+    style rec_top fill:#e8f4f8,stroke:#2c3e50,stroke-width:2px
+    style intra_top fill:#d5e8d4,stroke:#82b366,stroke-width:2px
+    style mc_top fill:#d5e8d4,stroke:#82b366,stroke-width:2px
+    style tq_top fill:#fff2cc,stroke:#d6b656,stroke-width:2px
+    style rec_buf_wrapper fill:#f8cecc,stroke:#b85450,stroke-width:2px
+    style IinP_flag_gen fill:#e1d5e7,stroke:#9673a6,stroke-width:2px

@@ -1,0 +1,167 @@
+%%{ init: { "theme": "default", "themeVariables": { "fontSize": "11px" } } }%%
+graph TD
+    subgraph "Behavioral Models (lib/behave/mem/)"
+        direction LR
+        RAM_1P["<b>ram_1p</b><br/>Single-Port RAM<br/>cen/wen/oen low-active<br/>reg array inferred"]
+        RAM_DP["<b>ram_dp</b><br/>True Dual-Port RAM<br/>Port A + Port B<br/>reg array inferred"]
+        RF_1P["<b>rf_1p</b><br/>Register File<br/>Single-Port<br/>reg array inferred"]
+        SRAM_SP["<b>sram_sp_be_behave</b><br/>SP Byte-Enable SRAM<br/>per-byte write enable<br/>reg array + generate"]
+        SRAM_TP["<b>sram_tp_be_behave</b><br/>TP Byte-Enable SRAM<br/>separate R/W ports<br/>reg array + generate"]
+    end
+
+    subgraph "Memory Wrappers (rtl/mem/) — 34 modules, ~131 instances"
+        direction TB
+
+        subgraph "Line Buffers (fetch)"
+            direction LR
+            BUF_128["<b>buf_ram_1p_128x64</b><br/>128×64<br/>(wraps ram_1p)"]
+            BUF_192["<b>buf_ram_1p_64x192</b><br/>64×64<br/>(wraps ram_1p)"]
+            BUF_64["<b>buf_ram_1p_64x64</b><br/>64×64<br/>(wraps ram_1p)"]
+            LIPO_128["<b>mem_lipo_1p_128x64x4</b><br/>4× buf_128x64<br/>LIPO interleaved"]
+            LIPO_64["<b>mem_lipo_1p_64x64x4</b><br/>4× buf_64x64<br/>LIPO interleaved"]
+        end
+
+        subgraph "Register Files (fetch)"
+            direction LR
+            RF_128["<b>fetch_rf_1p_128x512</b><br/>128×512<br/>(wraps rf_1p)<br/>4-bank XM: 4×rfsphd_128x128"]
+            RF_64["<b>fetch_rf_1p_64x256</b><br/>64×256<br/>(wraps rf_1p)<br/>4-bank XM: 4×rfsphd_64x64"]
+        end
+
+        subgraph "SP RAMs (generic)"
+            direction LR
+            SP_240["<b>ram_sp_240x32</b><br/>240×32"]
+            SP_256["<b>ram_sp_256x32</b><br/>256×32"]
+            SP_384["<b>ram_sp_384x32</b><br/>384×32"]
+            SP_1024["<b>ram_sp_1024x32</b><br/>1024×32"]
+            SP_1536["<b>ram_sp_1536x32</b><br/>1536×32"]
+        end
+
+        subgraph "SP Byte-Enable RAMs"
+            direction LR
+            SP_BE_128["<b>ram_sp_be_128x64</b><br/>128×64 BE"]
+            SP_BE_192_64["<b>ram_sp_be_192x64</b><br/>192×64 BE"]
+            SP_BE_192_128["<b>ram_sp_be_192x128</b><br/>192×128 BE"]
+            SP_BE_192_512["<b>ram_sp_be_192x512</b><br/>192×512 BE"]
+            SP_BE_64_23["<b>ram_sp_be_64x23</b><br/>64×23 BE"]
+        end
+
+        subgraph "TP Byte-Enable RAMs"
+            TP_BE_32["<b>ram_tp_be_32x64</b><br/>32×64 TP BE"]
+            TP_2P["<b>fetch_ram_2p_64x208</b><br/>256×64 TP<br/>(wraps sram_tp_be)"]
+        end
+
+        subgraph "Subsystem-Specific Wrappers"
+            direction LR
+            CABAC_W["<b>cabac_ram_sp_64x16</b><br/>64×16 (wraps ram_1p)"]
+            DB_CBF["<b>db_cbf_ram_sp_64x16</b><br/>64×16"]
+            DB_MV_512["<b>db_mv_ram_sp_512x20</b><br/>512×20"]
+            DB_MV_64["<b>db_mv_ram_sp_64x20</b><br/>64×20"]
+            DB_QP["<b>db_qp_ram_sp_64x20</b><br/>64×20"]
+            DB_TUPU["<b>db_tupu_ram_sp_64x32</b><br/>64×32"]
+            FME_MV_DP["<b>fme_mv_ram_dp_64x20</b><br/>64×20 DP"]
+            IME_MV_SP["<b>ime_mv_ram_sp_64x13</b><br/>64×13"]
+            MC_MV_512["<b>mc_mv_ram_sp_512x20</b><br/>512×20"]
+            POSI_MD["<b>posi_md_ram_sp_64x6</b><br/>64×8"]
+            PREI_MD["<b>prei_md_ram_sp_85x6</b><br/>128×8"]
+            FETCH_1P["<b>fetch_ram_1p_128x32</b><br/>128×128"]
+            TQ_RAM["<b>tq_ram_sp_32x16</b><br/>32×16"]
+        end
+    end
+
+    subgraph "Subsystem Consumers"
+        direction TB
+        FETCH["<b>fetch_top</b><br/>~40 instances"]
+        IME["<b>ime_top_buf</b><br/>3 instances"]
+        FME["<b>fme_top_buf</b><br/>9 instances"]
+        PREI["<b>prei_top_buf</b><br/>2 instances"]
+        POSI["<b>posi_top_buf</b><br/>7 instances"]
+        REC["<b>rec_top</b><br/>~51 instances"]
+        DB["<b>dbsao_top</b><br/>6 instances"]
+        CABAC["<b>cabac_top</b><br/>1 instance"]
+    end
+
+    %% Behavioral model connections
+    RAM_1P -.->|"used by"| BUF_128
+    RAM_1P -.->|"used by"| BUF_64
+    RAM_1P -.->|"used by"| CABAC_W
+    RAM_1P -.->|"used by"| DB_CBF
+    RAM_1P -.->|"used by"| DB_MV_512
+    RAM_1P -.->|"used by"| DB_MV_64
+    RAM_1P -.->|"used by"| DB_QP
+    RAM_1P -.->|"used by"| DB_TUPU
+    RAM_1P -.->|"used by"| IME_MV_SP
+    RAM_1P -.->|"used by"| MC_MV_512
+    RAM_1P -.->|"used by"| POSI_MD
+    RAM_1P -.->|"used by"| PREI_MD
+    RAM_1P -.->|"used by"| FETCH_1P
+    RAM_1P -.->|"used by"| TQ_RAM
+    RAM_DP -.->|"used by"| FME_MV_DP
+    RF_1P -.->|"used by"| RF_128
+    RF_1P -.->|"used by"| RF_64
+    SRAM_SP -.->|"used by"| SP_240
+    SRAM_SP -.->|"used by"| SP_256
+    SRAM_SP -.->|"used by"| SP_384
+    SRAM_SP -.->|"used by"| SP_1024
+    SRAM_SP -.->|"used by"| SP_1536
+    SRAM_SP -.->|"used by"| SP_BE_128
+    SRAM_SP -.->|"used by"| SP_BE_192_64
+    SRAM_SP -.->|"used by"| SP_BE_192_128
+    SRAM_SP -.->|"used by"| SP_BE_192_512
+    SRAM_SP -.->|"used by"| SP_BE_64_23
+    SRAM_TP -.->|"used by"| TP_BE_32
+    SRAM_TP -.->|"used by"| TP_2P
+
+    %% Wrapper to subsystem connections
+    LIPO_128 -->|"cur luma"| FETCH
+    LIPO_64 -->|"cur chroma"| FETCH
+    RF_128 -->|"ref luma"| FETCH
+    RF_64 -->|"ref chroma"| FETCH
+    FETCH_1P -->|"rec_db"| FETCH
+    TP_2P -->|"bilinear"| FETCH
+    SP_BE_192_64 -->|"fetch CEF"| FETCH
+
+    IME_MV_SP -->|"MV dump"| IME
+    SP_BE_192_512 -->|"vert mem"| IME
+
+    FME_MV_DP -->|"MV buffer"| FME
+    DB_MV_64 -->|"cost RAM"| FME
+    DB_MV_512 -->|"top MV"| FME
+    SP_BE_128 -->|"CEF buf"| FME
+
+    PREI_MD -->|"mode store"| PREI
+    POSI_MD -->|"mode store"| POSI
+    SP_240 -->|"row ref"| POSI
+    SP_256 -->|"col ref"| POSI
+    SP_1024 -->|"frame ref"| POSI
+
+    SP_384 -->|"intra ref"| REC
+    SP_1536 -->|"intra frame"| REC
+    SP_BE_64_23 -->|"MVD rot"| REC
+    TP_BE_32 -->|"pre buf"| REC
+    SP_BE_192_64 -->|"rec buf"| REC
+    SP_BE_192_128 -->|"CEF buf"| REC
+    MC_MV_512 -->|"MC top MV"| REC
+    TQ_RAM -->|"TQ transpose"| REC
+
+    DB_CBF -->|"CBF"| DB
+    DB_TUPU -->|"TU/PU"| DB
+    DB_QP -->|"QP"| DB
+    DB_MV_64 -->|"cur MV"| DB
+    DB_MV_512 -->|"top MV"| DB
+
+    CABAC_W -->|"neighbor"| CABAC
+
+    %% Style
+    style RAM_1P fill:#1a73e8,color:#fff,stroke:#1557b0,stroke-width:2px
+    style RAM_DP fill:#1a73e8,color:#fff,stroke:#1557b0,stroke-width:2px
+    style RF_1P fill:#1a73e8,color:#fff,stroke:#1557b0,stroke-width:2px
+    style SRAM_SP fill:#1a73e8,color:#fff,stroke:#1557b0,stroke-width:2px
+    style SRAM_TP fill:#1a73e8,color:#fff,stroke:#1557b0,stroke-width:2px
+    style FETCH fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:2px
+    style IME fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:2px
+    style FME fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:2px
+    style PREI fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style POSI fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style REC fill:#9c27b0,color:#fff,stroke:#8e24aa,stroke-width:2px
+    style DB fill:#ff9800,color:#000,stroke:#f57c00,stroke-width:2px
+    style CABAC fill:#00bcd4,color:#fff,stroke:#0097a7,stroke-width:2px

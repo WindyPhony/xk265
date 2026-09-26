@@ -1,0 +1,125 @@
+%%{ init: { "theme": "default", "themeVariables": { "fontSize": "12px" } } }%%
+graph TD
+    subgraph "External Memory"
+        EXT["<b>External SDRAM</b><br/>ext_if: 128-bit data bus<br/>start/done/mode/x/y"]
+    end
+
+    subgraph "Fetch Subsystem (fetch_top)"
+        direction TB
+        FETCH_CTRL["<b>fetch_top</b><br/>Memory Interface Controller<br/>ext_if + line buffers"]
+
+        subgraph "Current Block Buffers"
+            CUR_LUMA["<b>cur_luma LIPO</b><br/>10 × mem_lipo_1p_128x64x4<br/>4× buf_ram_1p_128x64<br/>128×4 × 64-bit"]
+            CUR_CHROMA["<b>cur_chroma LIPO</b><br/>3 × mem_lipo_1p_64x64x4<br/>4× buf_ram_1p_64x64<br/>64×4 × 64-bit"]
+        end
+
+        subgraph "Reference Frame Buffers"
+            REF_LUMA_IME["<b>ref_luma IME</b><br/>4 × fetch_rf_1p_128x512<br/>128 × 512-bit RF"]
+            REF_LUMA_FME["<b>ref_luma FME</b><br/>5 × fetch_rf_1p_128x512<br/>128 × 512-bit RF"]
+            REF_CHROMA["<b>ref_chroma U/V</b><br/>8 × fetch_rf_1p_64x256<br/>64 × 256-bit RF"]
+        end
+
+        subgraph "DB Support Buffers"
+            REC_DB["<b>rec_db buf</b><br/>2 × fetch_ram_1p_128x32<br/>128 × 128-bit"]
+            BILINEAR["<b>bilinear prefetch</b><br/>4 × fetch_ram_2p_64x208<br/>256 × 64-bit 2P"]
+            FETCH_CEF["<b>fetch CEF</b><br/>4 × ram_sp_be_192x64<br/>192 × 64-bit"]
+        end
+    end
+
+    subgraph "IME Subsystem"
+        IME_MV["<b>IME MV Storage</b><br/>2 × ime_mv_ram_sp_64x13<br/>64 × 13-bit SP<br/>(ping-pong)"]
+        IME_VERT["<b>IME Vertical Mem</b><br/>1 × ram_sp_be_192x512<br/>192 × 512-bit"]
+    end
+
+    subgraph "FME Subsystem"
+        FME_MV["<b>FME MV Buffer</b><br/>3 × fme_mv_ram_dp_64x20<br/>64 × 20-bit DP<br/>(R:portA, W:portB)"]
+        FME_COST["<b>FME Cost RAM</b><br/>1 × db_mv_ram_sp_64x20<br/>64 × 20-bit"]
+        FME_TOP_MV["<b>FME Top MV</b><br/>1 × db_mv_ram_sp_512x20<br/>512 × 20-bit"]
+        FME_CEF["<b>FME CEF Buffer</b><br/>4 × ram_sp_be_128x64<br/>128 × 64-bit"]
+    end
+
+    subgraph "PREI Subsystem"
+        PREI_MD["<b>PREI Mode RAM</b><br/>2 × prei_md_ram_sp_85x6<br/>128 × 8-bit<br/>(ping-pong)"]
+    end
+
+    subgraph "POSI Subsystem"
+        POSI_MD["<b>POSI Mode RAM</b><br/>4 × posi_md_ram_sp_64x6<br/>64 × 8-bit<br/>(double-buffer)"]
+        POSI_BUF["<b>POSI Reference</b><br/>ram_sp_240x32 (row)<br/>ram_sp_256x32 (col)<br/>ram_sp_1024x32 (frame)"]
+    end
+
+    subgraph "REC Subsystem"
+        direction TB
+        REC_INTRA["<b>REC Intra Reference</b><br/>ram_sp_384x32 ×2 (row/col)<br/>ram_sp_1536x32 ×1 (frame)"]
+        REC_BUF["<b>REC Buffers (rec_buf_wrapper)</b><br/>pre: ram_tp_be_32x64 ×4<br/>rec: ram_sp_be_192x64 ×4<br/>cef: ram_sp_be_192x128 ×4<br/>mvd: ram_sp_be_64x23 ×3"]
+        REC_MC_MV["<b>MC Top MV</b><br/>1 × mc_mv_ram_sp_512x20<br/>512 × 20-bit"]
+        TQ_TRANS["<b>TQ Transpose</b><br/>32 × tq_ram_sp_32x16<br/>32 × 16-bit"]
+    end
+
+    subgraph "DB Subsystem"
+        DB_BUF["<b>DB Buffers</b><br/>CBF: db_cbf_ram_sp_64x16<br/>TU/PU: db_tupu_ram_sp_64x32<br/>QP: db_qp_ram_sp_64x20<br/>cur MV: db_mv_ram_sp_64x20<br/>top MV: db_mv_ram_sp_512x20"]
+    end
+
+    subgraph "CABAC Subsystem"
+        CABAC_NEIGH["<b>CABAC Neighbor Info</b><br/>1 × cabac_ram_sp_64x16<br/>64 × 16-bit"]
+    end
+
+    %% External memory connections
+    EXT <-->|"128b load/store"| FETCH_CTRL
+
+    %% Fetch to subsystems
+    FETCH_CTRL -->|"cur luma 256b"| CUR_LUMA
+    FETCH_CTRL -->|"cur chroma 256b"| CUR_CHROMA
+    FETCH_CTRL -->|"ref luma 512b"| REF_LUMA_IME
+    FETCH_CTRL -->|"ref luma 512b"| REF_LUMA_FME
+    FETCH_CTRL -->|"ref chroma 256b"| REF_CHROMA
+    FETCH_CTRL -->|"rec_db 128b"| REC_DB
+    FETCH_CTRL -->|"bilinear 64b"| BILINEAR
+
+    %% Subsystem connections
+    CUR_LUMA -->|"luma pixels"| IME_MV
+    CUR_LUMA -->|"luma pixels"| FME_MV
+    REF_LUMA_IME -->|"ref luma"| IME_VERT
+    REF_LUMA_FME -->|"ref luma"| FME_MV
+    REF_CHROMA -->|"ref chroma"| FME_MV
+
+    IME_MV -->|"13b MV"| FME_MV
+    FME_MV -->|"20b MV"| REC_BUF
+    FME_MV -->|"20b MV"| DB_BUF
+    FME_CEF -->|"64b coef"| REC_BUF
+
+    PREI_MD -->|"6b mode"| POSI_MD
+    POSI_MD -->|"6b mode"| CABAC_NEIGH
+
+    REC_BUF -->|"rec pixels"| DB_BUF
+    REC_BUF -->|"coefficients"| CABAC_NEIGH
+    REC_BUF -->|"MVD"| CABAC_NEIGH
+
+    REC_MC_MV -->|"top MV"| REC_BUF
+    DB_BUF -->|"filtered pixels"| REC_DB
+
+    %% Style
+    style EXT fill:#666,color:#fff,stroke:#444,stroke-width:2px
+    style FETCH_CTRL fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:2px
+    style CUR_LUMA fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style CUR_CHROMA fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style REF_LUMA_IME fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style REF_LUMA_FME fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style REF_CHROMA fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style REC_DB fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style BILINEAR fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style FETCH_CEF fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:1px
+    style IME_MV fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:2px
+    style IME_VERT fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:2px
+    style FME_MV fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:2px
+    style FME_COST fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:1px
+    style FME_TOP_MV fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:1px
+    style FME_CEF fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:1px
+    style PREI_MD fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style POSI_MD fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style POSI_BUF fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:1px
+    style REC_INTRA fill:#9c27b0,color:#fff,stroke:#8e24aa,stroke-width:2px
+    style REC_BUF fill:#9c27b0,color:#fff,stroke:#8e24aa,stroke-width:2px
+    style REC_MC_MV fill:#9c27b0,color:#fff,stroke:#8e24aa,stroke-width:1px
+    style TQ_TRANS fill:#9c27b0,color:#fff,stroke:#8e24aa,stroke-width:1px
+    style DB_BUF fill:#ff9800,color:#000,stroke:#f57c00,stroke-width:2px
+    style CABAC_NEIGH fill:#00bcd4,color:#fff,stroke:#0097a7,stroke-width:2px

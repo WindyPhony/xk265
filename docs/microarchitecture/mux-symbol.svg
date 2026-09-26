@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420">
+<rect width="640" height="420" fill="white"/>
+<g fill="none" stroke="#444" stroke-width="2">
+<polygon points="280,65 370,110 370,270 280,315"/>
+<path d="M70 140H280 M70 250H280 M370 190H560 M325 292.5V365H220"/>
+</g>
+<g font-family="Arial,sans-serif" font-size="18" fill="#222">
+<text x="70" y="126">data_1</text><text x="70" y="236">data_0</text>
+<text x="299" y="146">1</text><text x="299" y="256">0</text>
+<text x="438" y="176">output</text><text x="220" y="391">select</text>
+<text x="70" y="35" font-size="21">MUX: output = select ? data_1 : data_0</text>
+</g></svg>

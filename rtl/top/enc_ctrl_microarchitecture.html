@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>enc_ctrl.v — Microarchitecture Analysis</title>
+<style>
+:root {
+  --bg: #f8f9fa; --fg: #1a1a2e; --accent: #0f3460;
+  --table-bg: #fff; --table-border: #dee2e6; --code-bg: #e9ecef;
+  --section-bg: #fff; --shadow: 0 1px 3px rgba(0,0,0,.08);
+  --state-s: #e8f4fd; --state-idle: #f0f0f0; --state-sa: #fef3e2;
+  --tag-verified: #d4edda; --tag-inferred: #fff3cd; --tag-unknown: #f8d7da;
+  --tag-verified-fg: #155724; --tag-inferred-fg: #856404; --tag-unknown-fg: #721c24;
+}
+html.dark {
+  --bg: #0d1117; --fg: #c9d1d9; --accent: #58a6ff;
+  --table-bg: #161b22; --table-border: #30363d; --code-bg: #21262d;
+  --section-bg: #161b22; --shadow: 0 1px 3px rgba(0,0,0,.4);
+  --state-s: #1a2744; --state-idle: #1a1a2e; --state-sa: #3d2e1a;
+  --tag-verified: #1a3a2a; --tag-inferred: #3d3a1a; --tag-unknown: #3a1a1a;
+  --tag-verified-fg: #7ee2a8; --tag-inferred-fg: #e2c87e; --tag-unknown-fg: #f08080;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+       background: var(--bg); color: var(--fg); line-height: 1.6; padding: 2rem 1rem; }
+.container { max-width: 1100px; margin: 0 auto; }
+h1 { font-size: 1.6rem; border-bottom: 3px solid var(--accent); padding-bottom: .4rem; margin-bottom: 1.5rem; }
+h2 { font-size: 1.25rem; color: var(--accent); margin: 2rem 0 .8rem; border-left: 4px solid var(--accent); padding-left: .6rem; }
+h3 { font-size: 1.05rem; margin: 1.2rem 0 .5rem; }
+p, li { font-size: .95rem; }
+table { width: 100%; border-collapse: collapse; margin: .8rem 0 1.2rem; font-size: .85rem; background: var(--table-bg); box-shadow: var(--shadow); }
+th, td { border: 1px solid var(--table-border); padding: .45rem .6rem; text-align: left; vertical-align: top; }
+th { background: var(--accent); color: #fff; font-weight: 600; white-space: nowrap; }
+tr:nth-child(even) { background: rgba(0,0,0,.02); }
+html.dark tr:nth-child(even) { background: rgba(255,255,255,.03); }
+code, .code { font-family: 'Fira Code', 'Consolas', monospace; font-size: .82rem; background: var(--code-bg); padding: .15rem .35rem; border-radius: 3px; }
+pre { background: var(--code-bg); padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: .8rem; line-height: 1.5; margin: .8rem 0; }
+.tag { display: inline-block; padding: .1rem .45rem; border-radius: 3px; font-size: .75rem; font-weight: 600; }
+.tag-verified { background: var(--tag-verified); color: var(--tag-verified-fg); }
+.tag-inferred { background: var(--tag-inferred); color: var(--tag-inferred-fg); }
+.tag-unknown  { background: var(--tag-unknown);  color: var(--tag-unknown-fg); }
+ul { margin: .3rem 0 .8rem 1.2rem; }
+li { margin-bottom: .25rem; }
+.state-box { background: var(--state-s); border: 1px solid var(--table-border); border-radius: 6px; padding: .8rem 1rem; margin: .8rem 0; }
+.state-box.idle { background: var(--state-idle); }
+.state-box.sa   { background: var(--state-sa); }
+.state-box strong { display: block; font-size: 1rem; margin-bottom: .3rem; }
+.arrow { font-size: 1.5rem; text-align: center; color: var(--accent); margin: .2rem 0; }
+.flex-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+.flex-row > div { flex: 1; min-width: 280px; }
+.toggle { position: fixed; top: 1rem; right: 1rem; background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: .4rem .8rem; cursor: pointer; font-size: .85rem; z-index: 100; }
+</style>
+</head>
+<body>
+<button class="toggle" onclick="document.documentElement.classList.toggle('dark');localStorage.setItem('theme',document.documentElement.classList.contains('dark')?'dark':'light')">Toggle Dark</button>
+<script>
+if(localStorage.getItem('theme')==='dark'||(!localStorage.getItem('theme')&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark');
+</script>
+<div class="container">
+
+<h1>enc_ctrl.v — Microarchitecture Analysis</h1>
+<p style="color:var(--accent);font-weight:600;">RTL Source: <code>rtl/top/enc_ctrl.v</code> &nbsp;|&nbsp; Original name in file header: <code>sys_ctrl.v</code></p>
+<p style="font-size:.9rem;margin-top:.5rem;">Reverse-engineered from RTL only. No generic HEVC assumptions.</p>
+
+<!-- ================================================================ -->
+<h2>1. Module Overview</h2>
+<!-- ================================================================ -->
+
+<table>
+<tr><th>Attribute</th><th>Value</th><th>Evidence</th></tr>
+<tr><td>Module name</td><td><code>enc_ctrl</code></td><td>Line 34</td></tr>
+<tr><td>File</td><td><code>rtl/top/enc_ctrl.v</code></td><td>—</td></tr>
+<tr><td>Original name</td><td><code>sys_ctrl</code> (line 14)</td><td>File header</td></tr>
+<tr><td>Description</td><td>System controller of <code>enc_core</code> and <code>fetch</code></td><td>Line 17</td></tr>
+<tr><td>Role</td><td>Global pipeline controller / CTU sequencer</td><td>All output signals target top-level encoder subsystems</td></tr>
+</table>
+
+<h3>Position in hierarchy</h3>
+<pre>
+h265enc_top
+├── enc_ctrl          ← THIS MODULE
+├── fetch_top         ← receives ena, x, y from enc_ctrl
+└── enc_core          ← receives start, x, y from enc_ctrl
+    ├── PREI          ← receives prei_start_o, prei_x_o, prei_y_o
+    ├── POSI          ← receives posi_start_o, posi_x_o, posi_y_o
+    ├── IME           ← receives ime_start_o, ime_x_o, ime_y_o
+    ├── FME           ← receives fme_start_o, fme_x_o, fme_y_o
+    ├── REC           ← receives rec_start_o, rec_x_o, rec_y_o
+    ├── DB / SAO      ← receives db_start_o, db_x_o, db_y_o
+    └── CABAC (EC)    ← receives ec_start_o, ec_x_o, ec_y_o
+</pre>
+
+<h3>Block-level description</h3>
+<p><code>enc_ctrl</code> is a <strong>pipeline sequencer and CTU progress tracker</strong>. It does not process pixels. Its job is to:</p>
+<ol style="margin-left:1.2rem;">
+<li>Accept a frame-level start (<code>sys_start_i</code>) and frame parameters (<code>sys_type_i</code>, <code>sys_ctu_all_x_i</code>, <code>sys_ctu_all_y_i</code>).</li>
+<li>Progressively activate (ramp-up) and then deactivate (drain) encoder sub-blocks as a pipeline, advancing one CTU position per pipeline step.</li>
+<li>Track completion of each sub-block and advance the pipeline when all expected completions for the current stage are satisfied.</li>
+<li>Drive CTU x/y coordinates to every sub-block through a cascading register pipeline.</li>
+<li>Drive fetch enable/address signals to the data memory interface (<code>fetch_top</code>).</li>
+<li>Signal frame completion (<code>sys_done_o</code>) when the last CTU exits the pipeline.</li>
+</ol>
+
+<!-- ================================================================ -->
+<h2>2. Interface Analysis</h2>
+<!-- ================================================================ -->
+
+<h3>2.1 Global Signals</h3>
+<table>
+<tr><th>Signal</th><th>Dir</th><th>Width</th><th>Type</th><th>Description</th><th>Evidence</th></tr>
+<tr><td><code>clk</code></td><td>in</td><td>1</td><td>clock</td><td>System clock</td><td>Line 136</td></tr>
+<tr><td><code>rstn</code></td><td>in</td><td>1</td><td>reset (active-low async)</td><td>Asynchronous active-low reset</td><td>Line 137, <code>negedge rstn</code> in all always blocks</td></tr>
+</table>
+
+<h3>2.2 System Interface (sys_if)</h3>
+<table>
+<tr><th>Signal</th><th>Dir</th><th>Width</th><th>Type</th><th>Description</th><th>Evidence</th></tr>
+<tr><td><code>sys_start_i</code></td><td>in</td><td>1</td><td>handshake / start</td><td>Frame encode start pulse from top</td><td>Line 139, triggers IDLE→S0 at line 285</td></tr>
+<tr><td><code>sys_type_i</code></td><td>in</td><td>1</td><td>configuration</td><td>Frame type: 0=INTRA, 1=INTER</td><td>Line 140, <code>INTRA=0, INTER=1</code> at lines 129–130</td></tr>
+<tr><td><code>sys_ctu_all_x_i</code></td><td>in</td><td>6</td><td>configuration</td><td>Last CTU column index (picture width in CTUs − 1)</td><td>Line 141, <code>PIC_X_WIDTH=6</code> (enc_defines.v:92)</td></tr>
+<tr><td><code>sys_ctu_all_y_i</code></td><td>in</td><td>6</td><td>configuration</td><td>Last CTU row index (picture height in CTUs − 1)</td><td>Line 142, <code>PIC_Y_WIDTH=6</code> (enc_defines.v:93)</td></tr>
+<tr><td><code>sys_done_o</code></td><td>out</td><td>1</td><td>done</td><td>Frame encode complete pulse</td><td>Line 250: <code>sys_done_o = cur_state==SA && nxt_state==IDLE</code></td></tr>
+</table>
+
+<h3>2.3 Start Interface</h3>
+<table>
+<tr><th>Signal</th><th>Dir</th><th>Width</th><th>Type</th><th>Description</th><th>Evidence</th></tr>
+<tr><td><code>enc_start_o</code></td><td>out</td><td>1</td><td>registered start pulse</td><td>One-cycle start pulse for enc_core pipeline advance</td><td>Line 145, registered at line 262, driven by <code>enc_start_w</code></td></tr>
+</table>
+
+<h3>2.4 Done Interface (sub-block completions)</h3>
+<table>
+<tr><th>Signal</th><th>Dir</th><th>Width</th><th>Type</th><th>Description</th><th>Evidence</th></tr>
+<tr><td><code>fetch_done_i</code></td><td>in</td><td>1</td><td>done</td><td>Fetch sub-block completion</td><td>Line 147</td></tr>
+<tr><td><code>prei_done_i</code></td><td>in</td><td>1</td><td>done</td><td>Prediction Intra completion</td><td>Line 148</td></tr>
+<tr><td><code>posi_done_i</code></td><td>in</td><td>1</td><td>done</td><td>Position Intra completion</td><td>Line 149</td></tr>
+<tr><td><code>ime_done_i</code></td><td>in</td><td>1</td><td>done</td><td>Integer Motion Estimation completion</td><td>Line 150</td></tr>
+<tr><td><code>fme_done_i</code></td><td>in</td><td>1</td><td>done</td><td>Fractional Motion Estimation completion</td><td>Line 151</td></tr>
+<tr><td><code>rec_done_i</code></td><td>in</td><td>1</td><td>done</td><td>Reconstruction completion</td><td>Line 152</td></tr>
+<tr><td><code>db_done_i</code></td><td>in</td><td>1</td><td>done</td><td>Deblocking/SAO completion</td><td>Line 153</td></tr>
+<tr><td><code>ec_done_i</code></td><td>in</td><td>1</td><td>done</td><td>Entropy coding (CABAC) completion</td><td>Line 154</td></tr>
+<tr><td><code>enc_done_r</code></td><td>out</td><td>1</td><td>internal (output)</td><td>Registered combined-done pulse for pipeline advance</td><td>Line 155, 442–462</td></tr>
+</table>
+
+<h3>2.5 Start Signals (to enc_core)</h3>
+<table>
+<tr><th>Signal</th><th>Dir</th><th>Width</th><th>Type</th><th>Description</th><th>Evidence</th></tr>
+<tr><td><code>prei_start_o</code></td><td>out</td><td>1</td><td>registered start</td><td>Start pulse for PREI sub-block</td><td>Line 158</td></tr>
+<tr><td><code>posi_start_o</code></td><td>out</td><td>1</td><td>registered start</td><td>Start pulse for POSI sub-block</td><td>Line 159</td></tr>
+<tr><td><code>ime_start_o</code></td><td>out</td><td>1</td><td>registered start</td><td>Start pulse for IME sub-block</td><td>Line 160</td></tr>
+<tr><td><code>fme_start_o</code></td><td>out</td><td>1</td><td>registered start</td><td>Start pulse for FME sub-block</td><td>Line 161</td></tr>
+<tr><td><code>rec_start_o</code></td><td>out</td><td>1</td><td>registered start</td><td>Start pulse for REC sub-block</td><td>Line 162</td></tr>
+<tr><td><code>db_start_o</code></td><td>out</td><td>1</td><td>registered start</td><td>Start pulse for DB/SAO sub-block</td><td>Line 163</td></tr>
+<tr><td><code>ec_start_o</code></td><td>out</td><td>1</td><td>registered start</td><td>Start pulse for EC/CABAC sub-block</td><td>Line 164</td></tr>
+<tr><td><code>store_db_start_o</code></td><td>out</td><td>1</td><td>registered start</td><td>Start pulse for DB store operation</td><td>Line 165</td></tr>
+</table>
+
+<h3>2.6 CTU Coordinates (to enc_core)</h3>
+<table>
+<tr><th>Signal</th><th>Dir</th><th>Width</th><th>Type</th><th>Description</th><th>Evidence</th></tr>
+<tr><td><code>prei_x_o / prei_y_o</code></td><td>out</td><td>6 each</td><td>address</td><td>CTU coordinate for PREI</td><td>Lines 166–167</td></tr>
+<tr><td><code>posi_x_o / posi_y_o</code></td><td>out</td><td>6 each</td><td>address</td><td>CTU coordinate for POSI</td><td>Lines 168–169</td></tr>
+<tr><td><code>ime_x_o / ime_y_o</code></td><td>out</td><td>6 each</td><td>address</td><td>CTU coordinate for IME</td><td>Lines 170–171</td></tr>
+<tr><td><code>fme_x_o / fme_y_o</code></td><td>out</td><td>6 each</td><td>address</td><td>CTU coordinate for FME</td><td>Lines 172–173</td></tr>
+<tr><td><code>rec_x_o / rec_y_o</code></td><td>out</td><td>6 each</td><td>address</td><td>CTU coordinate for REC</td><td>Lines 174–175</td></tr>
+<tr><td><code>db_x_o / db_y_o</code></td><td>out</td><td>6 each</td><td>address</td><td>CTU coordinate for DB/SAO</td><td>Lines 176–177</td></tr>
+<tr><td><code>ec_x_o / ec_y_o</code></td><td>out</td><td>6 each</td><td>address</td><td>CTU coordinate for EC/CABAC</td><td>Lines 178–179</td></tr>
+<tr><td><code>store_db_x_o / store_db_y_o</code></td><td>out</td><td>6 each</td><td>address</td><td>CTU coordinate for DB store</td><td>Lines 180–181</td></tr>
+</table>
+
+<h3>2.7 Fetch Enable and Address Outputs</h3>
+<table>
+<tr><th>Signal</th><th>Dir</th><th>Width</th><th>Type</th><th>Description</th><th>Evidence</th></tr>
+<tr><td><code>load_cur_luma_ena_o</code></td><td>out</td><td>1</td><td>enable</td><td>Load current CTU luma enable</td><td>Line 183</td></tr>
+<tr><td><code>load_ref_luma_ena_o</code></td><td>out</td><td>1</td><td>enable</td><td>Load reference luma enable</td><td>Line 184</td></tr>
+<tr><td><code>load_cur_chroma_ena_o</code></td><td>out</td><td>1</td><td>enable</td><td>Load current CTU chroma enable</td><td>Line 185</td></tr>
+<tr><td><code>load_ref_chroma_ena_o</code></td><td>out</td><td>1</td><td>enable</td><td>Load reference chroma enable</td><td>Line 186</td></tr>
+<tr><td><code>load_db_luma_ena_o</code></td><td>out</td><td>1</td><td>enable</td><td>Load DB top-reconstructed luma enable</td><td>Line 187</td></tr>
+<tr><td><code>load_db_chroma_ena_o</code></td><td>out</td><td>1</td><td>enable</td><td>Load DB top-reconstructed chroma enable</td><td>Line 188</td></tr>
+<tr><td><code>store_db_luma_ena_o</code></td><td>out</td><td>1</td><td>enable</td><td>Store DB reconstructed luma enable</td><td>Line 189</td></tr>
+<tr><td><code>store_db_chroma_ena_o</code></td><td>out</td><td>1</td><td>enable</td><td>Store DB reconstructed chroma enable</td><td>Line 190</td></tr>
+<tr><td><code>load_cur_luma_x_o</code> … <code>store_db_chroma_y_o</code></td><td>out</td><td>6 each</td><td>address</td><td>16 address outputs for fetch (8 pairs x/y)</td><td>Lines 192–207</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>3. Internal Registers and Signals</h2>
+<!-- ================================================================ -->
+
+<table>
+<tr><th>Signal</th><th>Width</th><th>Reg/Wire</th><th>Assigned Where</th><th>Used Where</th><th>Functional Role</th><th>Evidence</th></tr>
+<tr><td><code>cur_state</code></td><td>4</td><td>reg</td><td>Line 272 (clk)</td><td>FSM, enable, done logic</td><td>FSM state register</td><td>Lines 272–278</td></tr>
+<tr><td><code>nxt_state</code></td><td>4</td><td>reg (combo)</td><td>Line 281 (*)</td><td>cur_state register</td><td>FSM next-state logic</td><td>Lines 281–299</td></tr>
+<tr><td><code>pre_l_ena</code></td><td>1</td><td>reg (combo)</td><td>Line 304 (*)</td><td>fetch enables, start reg</td><td>Pre-load stage enable</td><td>Lines 304–322</td></tr>
+<tr><td><code>stg_1_ena</code></td><td>1</td><td>reg (combo)</td><td>Line 304 (*)</td><td>ime_ena, prei_ena, start reg</td><td>Pipeline stage-1 enable</td><td>Lines 304–322</td></tr>
+<tr><td><code>stg_2_ena</code></td><td>1</td><td>reg (combo)</td><td>Line 304 (*)</td><td>fme_ena, posi_ena, start reg</td><td>Pipeline stage-2 enable</td><td>Lines 304–322</td></tr>
+<tr><td><code>rec_ena</code></td><td>1</td><td>reg (combo)</td><td>Line 304 (*)</td><td>fetch db load, start reg</td><td>Reconstruction stage enable</td><td>Lines 304–322</td></tr>
+<tr><td><code>db_ena</code></td><td>1</td><td>reg (combo)</td><td>Line 304 (*)</td><td>start reg</td><td>Deblocking stage enable</td><td>Lines 304–322</td></tr>
+<tr><td><code>ec_ena</code></td><td>1</td><td>reg (combo)</td><td>Line 304 (*)</td><td>start reg</td><td>Entropy coding stage enable</td><td>Lines 304–322</td></tr>
+<tr><td><code>store_db_ena</code></td><td>1</td><td>reg (combo)</td><td>Line 304 (*)</td><td>fetch store, start reg</td><td>DB store stage enable</td><td>Lines 304–322</td></tr>
+<tr><td><code>ime_ena</code></td><td>1</td><td>wire (combo)</td><td>Line 324</td><td>start reg</td><td>IME enable (INTER only)</td><td>Line 324</td></tr>
+<tr><td><code>fme_ena</code></td><td>1</td><td>wire (combo)</td><td>Line 325</td><td>start reg</td><td>FME enable (INTER only)</td><td>Line 325</td></tr>
+<tr><td><code>prei_ena</code></td><td>1</td><td>wire (combo)</td><td>Line 327</td><td>start reg</td><td>PREI enable (always = stg_1_ena)</td><td>Line 327</td></tr>
+<tr><td><code>posi_ena</code></td><td>1</td><td>wire (combo)</td><td>Line 328</td><td>start reg</td><td>POSI enable (always = stg_2_ena)</td><td>Line 328</td></tr>
+<tr><td><code>fetch_flg</code></td><td>1</td><td>reg (seq)</td><td>Line 394 (clk)</td><td>enc_done_r, stg_*_flg</td><td>Fetch done flag (sticky)</td><td>Lines 394–434</td></tr>
+<tr><td><code>prei_flg</code></td><td>1</td><td>reg (seq)</td><td>Line 394 (clk)</td><td>enc_done_r, stg_1_flg</td><td>PREI done flag (sticky)</td><td>Lines 394–434</td></tr>
+<tr><td><code>posi_flg</code></td><td>1</td><td>reg (seq)</td><td>Line 394 (clk)</td><td>enc_done_r, stg_2_flg</td><td>POSI done flag (sticky)</td><td>Lines 394–434</td></tr>
+<tr><td><code>ime_flg</code></td><td>1</td><td>reg (seq)</td><td>Line 394 (clk)</td><td>enc_done_r, stg_1_flg</td><td>IME done flag (sticky)</td><td>Lines 394–434</td></tr>
+<tr><td><code>fme_flg</code></td><td>1</td><td>reg (seq)</td><td>Line 394 (clk)</td><td>enc_done_r, stg_2_flg</td><td>FME done flag (sticky)</td><td>Lines 394–434</td></tr>
+<tr><td><code>rec_flg</code></td><td>1</td><td>reg (seq)</td><td>Line 394 (clk)</td><td>enc_done_r</td><td>REC done flag (sticky)</td><td>Lines 394–434</td></tr>
+<tr><td><code>db_flg</code></td><td>1</td><td>reg (seq)</td><td>Line 394 (clk)</td><td>enc_done_r</td><td>DB done flag (sticky)</td><td>Lines 394–434</td></tr>
+<tr><td><code>ec_flg</code></td><td>1</td><td>reg (seq)</td><td>Line 394 (clk)</td><td>enc_done_r</td><td>EC done flag (sticky)</td><td>Lines 394–434</td></tr>
+<tr><td><code>stg_1_flg</code></td><td>1</td><td>wire (combo)</td><td>Line 437</td><td>enc_done_r</td><td>Stage-1 combined done (INTRA: prei; INTER: prei&ime)</td><td>Line 437</td></tr>
+<tr><td><code>stg_2_flg</code></td><td>1</td><td>wire (combo)</td><td>Line 438</td><td>enc_done_r</td><td>Stage-2 combined done (INTRA: posi; INTER: posi&fme)</td><td>Line 438</td></tr>
+<tr><td><code>enc_start_w</code></td><td>1</td><td>reg (combo)</td><td>Line 252 (*)</td><td>enc_start_o, FSM next-state</td><td>Pipeline advance pulse (combinational)</td><td>Lines 252–260</td></tr>
+<tr><td><code>enc_done_r</code></td><td>1</td><td>reg (seq)</td><td>Line 442 (clk)</td><td>FSM, coord regs, flags</td><td>Registered combined-done pulse</td><td>Lines 442–462</td></tr>
+<tr><td><code>pre_l_x_o</code></td><td>6</td><td>reg (seq)</td><td>Line 466 (clk)</td><td>all fetch x/y, ime/prei coords</td><td>Pre-load CTU x coordinate (current CTU pointer)</td><td>Lines 466–489</td></tr>
+<tr><td><code>pre_l_y_o</code></td><td>6</td><td>reg (seq)</td><td>Line 466 (clk)</td><td>all fetch y/y, ime/prei coords</td><td>Pre-load CTU y coordinate (current CTU pointer)</td><td>Lines 466–489</td></tr>
+<tr><td><code>pre_l_start_o</code></td><td>1</td><td>reg (seq)</td><td>Line 356 (clk)</td><td>internal (not output)</td><td>Pre-load start (registered, not exported as output)</td><td>Line 244, 358</td></tr>
+</table>
+
+<h3>Register classification summary</h3>
+<table>
+<tr><th>Category</th><th>Signals</th></tr>
+<tr><td>FSM state storage</td><td><code>cur_state</code> [3:0]</td></tr>
+<tr><td>FSM completion pulse</td><td><code>enc_done_r</code></td></tr>
+<tr><td>Sticky done flags</td><td><code>fetch_flg, prei_flg, posi_flg, ime_flg, fme_flg, rec_flg, db_flg, ec_flg</code></td></tr>
+<tr><td>CTU position pointer</td><td><code>pre_l_x_o, pre_l_y_o</code></td></tr>
+<tr><td>Pipeline coordinate delay registers</td><td><code>prei_x_o/y_o, posi_x_o/y_o, ime_x_o/y_o, fme_x_o/y_o, rec_x_o/y_o, db_x_o/y_o, ec_x_o/y_o, store_db_x_o/y_o</code></td></tr>
+<tr><td>Registered start outputs</td><td><code>enc_start_o, pre_l_start_o, prei_start_o, posi_start_o, ime_start_o, fme_start_o, rec_start_o, db_start_o, ec_start_o, store_db_start_o</code></td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>4. FSM Reconstruction</h2>
+<!-- ================================================================ -->
+
+<h3>4.1 State Register and Encoding</h3>
+<table>
+<tr><th>State</th><th>Encoding (decimal)</th><th>Encoding (4-bit binary)</th><th>Evidence</th></tr>
+<tr><td><code>IDLE</code></td><td>0</td><td>4'b0000</td><td>Line 116</td></tr>
+<tr><td><code>S0</code></td><td>1</td><td>4'b0001</td><td>Line 117</td></tr>
+<tr><td><code>S1</code></td><td>2</td><td>4'b0010</td><td>Line 118</td></tr>
+<tr><td><code>S2</code></td><td>3</td><td>4'b0011</td><td>Line 119</td></tr>
+<tr><td><code>S3</code></td><td>4</td><td>4'b0100</td><td>Line 120</td></tr>
+<tr><td><code>S4</code></td><td>5</td><td>4'b0101</td><td>Line 121</td></tr>
+<tr><td><code>S5</code></td><td>6</td><td>4'b0110</td><td>Line 122</td></tr>
+<tr><td><code>S6</code></td><td>7</td><td>4'b0111</td><td>Line 123</td></tr>
+<tr><td><code>S7</code></td><td>8</td><td>4'b1000</td><td>Line 124</td></tr>
+<tr><td><code>S8</code></td><td>9</td><td>4'b1001</td><td>Line 125</td></tr>
+<tr><td><code>S9</code></td><td>10</td><td>4'b1010</td><td>Line 126</td></tr>
+<tr><td><code>SA</code></td><td>11</td><td>4'b1011</td><td>Line 127</td></tr>
+</table>
+<p><strong>Number of states:</strong> 12 &nbsp;|&nbsp; <strong>Reset state:</strong> IDLE (line 274) &nbsp;|&nbsp; <strong>State register width:</strong> 4 bits</p>
+
+<h3>4.2 State Transition Table</h3>
+<table>
+<tr><th>Current State</th><th>Transition Condition</th><th>Next State</th><th>Enable Vector (pre_l, stg1, stg2, rec, db, ec, store_db)</th><th>enc_done_r Expected Flags</th><th>Evidence</th></tr>
+<tr><td><code>IDLE</code></td><td><code>sys_start_i == 1</code></td><td><code>S0</code></td><td>7'b000_0000</td><td>—</td><td>Line 285</td></tr>
+<tr><td><code>IDLE</code></td><td><code>sys_start_i == 0</code></td><td><code>IDLE</code></td><td>7'b000_0000</td><td>—</td><td>Line 285</td></tr>
+<tr><td><code>S0</code></td><td><code>enc_start_w == 1</code></td><td><code>S1</code></td><td>7'b1_00_0000</td><td>{fetch, stg1, stg2, rec, db, ec} = 6'b1_000_00</td><td>Lines 286, 308, 449</td></tr>
+<tr><td><code>S1</code></td><td><code>enc_start_w == 1</code></td><td><code>S2</code></td><td>7'b1_10_0000</td><td>6'b1_100_00</td><td>Lines 287, 309, 450</td></tr>
+<tr><td><code>S2</code></td><td><code>enc_start_w == 1</code></td><td><code>S3</code></td><td>7'b1_11_0000</td><td>6'b1_110_00</td><td>Lines 288, 310, 451</td></tr>
+<tr><td><code>S3</code></td><td><code>enc_start_w == 1</code></td><td><code>S4</code></td><td>7'b1_11_1000</td><td>6'b1_111_00</td><td>Lines 289, 311, 452</td></tr>
+<tr><td><code>S4</code></td><td><code>enc_start_w == 1</code></td><td><code>S5</code></td><td>7'b1_11_1100</td><td>6'b1_111_10</td><td>Lines 290, 312, 453</td></tr>
+<tr style="background:var(--state-s)"><td><code>S5</code></td><td><code>enc_start_w==1 &amp;&amp; pre_l_x==ctu_all_x &amp;&amp; pre_l_y==ctu_all_y</code> (last CTU)</td><td><code>S6</code></td><td>7'b1_11_1111</td><td>6'b1_111_11</td><td>Lines 291–292, 313, 454</td></tr>
+<tr><td><code>S5</code></td><td><code>enc_start_w==1</code> (not last CTU)</td><td><code>S5</code></td><td>7'b1_11_1111</td><td>6'b1_111_11</td><td>Line 292 (stays in S5)</td></tr>
+<tr><td><code>S6</code></td><td><code>enc_start_w == 1</code></td><td><code>S7</code></td><td>7'b0_11_1111</td><td>6'b1_111_11</td><td>Lines 293, 314, 455</td></tr>
+<tr><td><code>S7</code></td><td><code>enc_start_w == 1</code></td><td><code>S8</code></td><td>7'b0_01_1111</td><td>6'b1_011_11</td><td>Lines 294, 315, 456</td></tr>
+<tr><td><code>S8</code></td><td><code>enc_start_w == 1</code></td><td><code>S9</code></td><td>7'b0_00_1111</td><td>6'b1_001_11</td><td>Lines 295, 316, 457</td></tr>
+<tr><td><code>S9</code></td><td><code>enc_start_w == 1</code></td><td><code>SA</code></td><td>7'b0_00_0111</td><td>6'b1_000_11</td><td>Lines 296, 317, 458</td></tr>
+<tr style="background:var(--state-sa)"><td><code>SA</code></td><td><code>enc_done_r == 1</code></td><td><code>IDLE</code></td><td>7'b0_00_0011</td><td>6'b1_000_01</td><td>Lines 297, 318, 459</td></tr>
+<tr><td><code>SA</code></td><td><code>enc_done_r == 0</code></td><td><code>SA</code></td><td>7'b0_00_0011</td><td>—</td><td>Line 297</td></tr>
+<tr><td><code>default</code></td><td>—</td><td><code>IDLE</code></td><td>7'b000_0000</td><td>—</td><td>Line 298</td></tr>
+</table>
+
+<h3>4.3 Pipeline Enable Progression (Ramp-Up / Drain)</h3>
+<p>The 7-bit enable vector <code>{pre_l_ena, stg_1_ena, stg_2_ena, rec_ena, db_ena, ec_ena, store_db_ena}</code> visually:</p>
+<table>
+<tr><th>State</th><th>pre_l</th><th>stg_1</th><th>stg_2</th><th>rec</th><th>db</th><th>ec</th><th>store_db</th><th>Phase</th></tr>
+<tr style="background:var(--state-idle)"><td>IDLE</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>—</td></tr>
+<tr><td>S0</td><td style="background:var(--tag-verified)">1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>Ramp-up 1/7</td></tr>
+<tr><td>S1</td><td>1</td><td style="background:var(--tag-verified)">1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>Ramp-up 2/7</td></tr>
+<tr><td>S2</td><td>1</td><td>1</td><td style="background:var(--tag-verified)">1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>Ramp-up 3/7</td></tr>
+<tr><td>S3</td><td>1</td><td>1</td><td>1</td><td style="background:var(--tag-verified)">1</td><td>0</td><td>0</td><td>0</td><td>Ramp-up 4/7</td></tr>
+<tr><td>S4</td><td>1</td><td>1</td><td>1</td><td>1</td><td style="background:var(--tag-verified)">1</td><td>0</td><td>0</td><td>Ramp-up 5/7</td></tr>
+<tr style="background:var(--state-s)"><td>S5</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td style="background:var(--tag-verified)">1</td><td style="background:var(--tag-verified)">1</td><td><strong>Full pipeline (all 7 active)</strong></td></tr>
+<tr><td>S6</td><td style="background:var(--tag-inferred)">0</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>Drain 1/7</td></tr>
+<tr><td>S7</td><td>0</td><td style="background:var(--tag-inferred)">0</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>Drain 2/7</td></tr>
+<tr><td>S8</td><td>0</td><td>0</td><td style="background:var(--tag-inferred)">0</td><td>1</td><td>1</td><td>1</td><td>1</td><td>Drain 3/7</td></tr>
+<tr><td>S9</td><td>0</td><td>0</td><td>0</td><td style="background:var(--tag-inferred)">0</td><td>1</td><td>1</td><td>1</td><td>Drain 4/7</td></tr>
+<tr style="background:var(--state-sa)"><td>SA</td><td>0</td><td>0</td><td>0</td><td>0</td><td style="background:var(--tag-inferred)">0</td><td>1</td><td>1</td><td>Drain 5/7 (last)</td></tr>
+</table>
+
+<h3>4.4 Key Architectural Insight: S5 Loop</h3>
+<p>State S5 is the <strong>sustained pipeline state</strong>. While the pipeline is full, the FSM stays in S5. Each time all 6 expected flags are set, <code>enc_done_r</code> pulses, advancing all coordinate registers one CTU forward, and the cycle repeats. The FSM only leaves S5 when the last CTU (<code>pre_l_x == sys_ctu_all_x &amp;&amp; pre_l_y == sys_ctu_all_y</code>) has been processed.</p>
+
+<!-- ================================================================ -->
+<h2>5. FSM State-by-State Behavioral Analysis</h2>
+<!-- ================================================================ -->
+
+<div class="state-box idle">
+<strong>IDLE (State 0)</strong>
+<ul>
+<li><strong>Purpose:</strong> Wait for frame start command.</li>
+<li><strong>Entry condition:</strong> Reset, or after SA completes.</li>
+<li><strong>Exit condition:</strong> <code>sys_start_i == 1</code> → transition to S0.</li>
+<li><strong>Controlled modules:</strong> None. All enables = 0.</li>
+<li><strong>Registers updated:</strong> <code>cur_state</code> holds IDLE. Coordinate registers hold 0. Flags cleared (line 405–413).</li>
+<li><strong>Next states:</strong> S0 (if sys_start_i), else IDLE.</li>
+<li><strong>RTL evidence:</strong> Lines 285, 274, 308, 405–413.</li>
+</ul>
+</div>
+
+<div class="state-box">
+<strong>S0 (State 1) — Fetch / Pre-load of first CTU</strong>
+<ul>
+<li><strong>Purpose:</strong> Kick off fetch for CTU at (0,0); begin pre-load of luma data.</li>
+<li><strong>Entry condition:</strong> <code>sys_start_i</code> was asserted last cycle.</li>
+<li><strong>Exit condition:</strong> <code>enc_start_w == 1</code> (i.e. <code>fetch_flg</code> is set, as S0 expects only fetch done).</li>
+<li><strong>Controlled modules:</strong> fetch_top (via <code>load_cur_luma_ena_o</code>), pre_l pipeline.</li>
+<li><strong>Important control signals:</strong> <code>pre_l_ena = 1</code>; all others = 0.</li>
+<li><strong>enc_done_r expected:</strong> <code>{fetch_flg, stg_1_flg, stg_2_flg, rec_flg, db_flg, ec_flg} == 6'b1_000_00</code></li>
+<li><strong>Registers updated on enc_done_r:</strong> All coordinate registers shift. <code>pre_l_x_o/y_o</code> advance to next CTU.</li>
+<li><strong>Next states:</strong> S1 (when enc_done_r fires).</li>
+<li><strong>RTL evidence:</strong> Lines 286, 308, 449.</li>
+</ul>
+</div>
+
+<div class="state-box">
+<strong>S1 (State 2) — Pipeline stage-1 enters (PREI or IME)</strong>
+<ul>
+<li><strong>Purpose:</strong> Activate first encoder processing stage (PREI for INTRA, or IME for INTER) on the next CTU, while pre_l continues.</li>
+<li><strong>Exit condition:</strong> <code>fetch_flg &amp;&amp; stg_1_flg</code>.</li>
+<li><strong>Controlled modules:</strong> fetch, PREI (always), IME (INTER only).</li>
+<li><strong>enc_done_r expected:</strong> <code>6'b1_100_00</code></li>
+<li><strong>Next states:</strong> S2.</li>
+<li><strong>RTL evidence:</strong> Lines 287, 309, 450, 324–327.</li>
+</ul>
+</div>
+
+<div class="state-box">
+<strong>S2 (State 3) — Pipeline stage-2 enters (POSI or FME)</strong>
+<ul>
+<li><strong>Purpose:</strong> Activate second encoder stage (POSI for INTRA, or FME for INTER) on the third CTU.</li>
+<li><strong>Exit condition:</strong> <code>fetch_flg &amp;&amp; stg_1_flg &amp;&amp; stg_2_flg</code>.</li>
+<li><strong>Controlled modules:</strong> fetch, PREI, IME, POSI, FME.</li>
+<li><strong>enc_done_r expected:</strong> <code>6'b1_110_00</code></li>
+<li><strong>Next states:</strong> S3.</li>
+<li><strong>RTL evidence:</strong> Lines 288, 310, 451, 325, 328.</li>
+</ul>
+</div>
+
+<div class="state-box">
+<strong>S3 (State 4) — Reconstruction enters</strong>
+<ul>
+<li><strong>Purpose:</strong> Activate REC on the fourth CTU. Pipeline now has: pre_l → stg1 → stg2 → rec.</li>
+<li><strong>Exit condition:</strong> <code>fetch_flg &amp;&amp; stg_1_flg &amp;&amp; stg_2_flg &amp;&amp; rec_flg</code>.</li>
+<li><strong>enc_done_r expected:</strong> <code>6'b1_111_00</code></li>
+<li><strong>Next states:</strong> S4.</li>
+<li><strong>RTL evidence:</strong> Lines 289, 311, 452.</li>
+</ul>
+</div>
+
+<div class="state-box">
+<strong>S4 (State 5) — Deblocking enters</strong>
+<ul>
+<li><strong>Purpose:</strong> Activate DB/SAO on the fifth CTU.</li>
+<li><strong>Exit condition:</strong> <code>fetch_flg &amp;&amp; stg_1_flg &amp;&amp; stg_2_flg &amp;&amp; rec_flg &amp;&amp; db_flg</code>.</li>
+<li><strong>enc_done_r expected:</strong> <code>6'b1_111_10</code></li>
+<li><strong>Next states:</strong> S5.</li>
+<li><strong>RTL evidence:</strong> Lines 290, 312, 453.</li>
+</ul>
+</div>
+
+<div class="state-box" style="border: 2px solid var(--accent);">
+<strong>S5 (State 6) — Full pipeline / Sustained CTU processing</strong>
+<ul>
+<li><strong>Purpose:</strong> All pipeline stages active. This is the <strong>steady-state</strong> for bulk CTU processing. Each enc_done_r pulse advances one CTU.</li>
+<li><strong>Entry condition:</strong> Previous state S4 completes, or re-entry after CTU advance.</li>
+<li><strong>Exit condition (leave pipeline):</strong> <code>enc_start_w==1 &amp;&amp; pre_l_x==sys_ctu_all_x &amp;&amp; pre_l_y==sys_ctu_all_y</code> (last CTU in frame).</li>
+<li><strong>Re-entry condition:</strong> <code>enc_start_w==1</code> but not at last CTU → stay in S5.</li>
+<li><strong>Controlled modules:</strong> All: fetch, PREI, IME, POSI, FME, REC, DB, EC, store_DB.</li>
+<li><strong>enc_done_r expected:</strong> <code>6'b1_111_11</code> (all 6 flags set).</li>
+<li><strong>Important:</strong> EC and store_db are activated in S5; this is the first state where all 7 enables are high.</li>
+<li><strong>Next states:</strong> S6 (if last CTU) or S5 (if more CTUs remain).</li>
+<li><strong>RTL evidence:</strong> Lines 291–292, 313, 454.</li>
+</ul>
+</div>
+
+<div class="state-box">
+<strong>S6 (State 7) — Pipeline drain: pre_l off</strong>
+<ul>
+<li><strong>Purpose:</strong> No new CTU is loaded; remaining CTUs drain through the pipeline.</li>
+<li><strong>Exit condition:</strong> <code>enc_start_w == 1</code>.</li>
+<li><strong>enc_done_r expected:</strong> <code>6'b1_111_11</code> (all flags still high from the last batch).</li>
+<li><strong>Next states:</strong> S7.</li>
+<li><strong>RTL evidence:</strong> Lines 293, 314, 455.</li>
+</ul>
+</div>
+
+<div class="state-box">
+<strong>S7 (State 8) — Pipeline drain: stg_1 off</strong>
+<ul>
+<li><strong>Purpose:</strong> PREI/IME processing is finished for all CTUs.</li>
+<li><strong>enc_done_r expected:</strong> <code>6'b1_011_11</code> (stg_1_flg expected low — the stg_1 sub-blocks are done for this CTU and no new one was started).</li>
+<li><strong>Next states:</strong> S8.</li>
+<li><strong>RTL evidence:</strong> Lines 294, 315, 456.</li>
+</ul>
+</div>
+
+<div class="state-box">
+<strong>S8 (State 9) — Pipeline drain: stg_2 off</strong>
+<ul>
+<li><strong>Purpose:</strong> POSI/FME processing is finished for all CTUs.</li>
+<li><strong>enc_done_r expected:</strong> <code>6'b1_001_11</code></li>
+<li><strong>Next states:</strong> S9.</li>
+<li><strong>RTL evidence:</strong> Lines 295, 316, 457.</li>
+</ul>
+</div>
+
+<div class="state-box">
+<strong>S9 (State 10) — Pipeline drain: rec off</strong>
+<ul>
+<li><strong>Purpose:</strong> Reconstruction finished for all CTUs. Only DB, EC, store_db remain.</li>
+<li><strong>enc_done_r expected:</strong> <code>6'b1_000_11</code></li>
+<li><strong>Next states:</strong> SA.</li>
+<li><strong>RTL evidence:</strong> Lines 296, 317, 458.</li>
+</ul>
+</div>
+
+<div class="state-box sa">
+<strong>SA (State 11) — Last stage drain: DB off, EC + store_db finish</strong>
+<ul>
+<li><strong>Purpose:</strong> Final CTU exits the pipeline through EC and store_db. No new CTUs are started.</li>
+<li><strong>Exit condition:</strong> <code>enc_done_r == 1</code>.</li>
+<li><strong>enc_done_r expected:</strong> <code>6'b1_000_01</code> (only ec_flg expected; store_db done is implicitly covered by the pipeline structure).</li>
+<li><strong>sys_done_o:</strong> Asserted when <code>cur_state==SA &amp;&amp; nxt_state==IDLE</code> (line 250). This is a one-cycle pulse at the very end.</li>
+<li><strong>Next states:</strong> IDLE.</li>
+<li><strong>RTL evidence:</strong> Lines 297, 318, 459, 250.</li>
+</ul>
+</div>
+
+<!-- ================================================================ -->
+<h2>6. Control Signal Generation</h2>
+<!-- ================================================================ -->
+
+<h3>6.1 Start Signal Generation</h3>
+<p>All start outputs are <strong>registered</strong> (one cycle delay after enable is asserted). The sequence is:</p>
+<ol style="margin-left:1.2rem;">
+<li>FSM state sets enable bits combinationally (lines 304–322).</li>
+<li><code>enc_start_o</code> is registered from <code>enc_start_w</code> (line 262).</li>
+<li>On the rising edge of <code>enc_start_o</code>, all start outputs are latched from their corresponding enable bits (line 368).</li>
+<li>Next cycle, <code>enc_start_o</code> drops (unless another enc_done_r fires), clearing all starts (line 380).</li>
+</ol>
+
+<table>
+<tr><th>Control Signal</th><th>Active State</th><th>Registered?</th><th>Pulse/Level</th><th>Receiver</th><th>Purpose</th><th>Evidence</th></tr>
+<tr><td><code>pre_l_start_o</code></td><td>S0–S4</td><td>Yes (line 358)</td><td>1-cycle pulse</td><td>Internal (pre-load fetch)</td><td>Load current CTU luma</td><td>Line 369</td></tr>
+<tr><td><code>prei_start_o</code></td><td>S1–S6</td><td>Yes (line 359)</td><td>1-cycle pulse</td><td>PREI sub-block</td><td>Start intra prediction mode decision</td><td>Line 370</td></tr>
+<tr><td><code>posi_start_o</code></td><td>S2–S7</td><td>Yes (line 360)</td><td>1-cycle pulse</td><td>POSI sub-block</td><td>Start intra position / partition decision</td><td>Line 371</td></tr>
+<tr><td><code>ime_start_o</code></td><td>S1–S6 (INTER only)</td><td>Yes (line 361)</td><td>1-cycle pulse</td><td>IME sub-block</td><td>Start integer motion estimation</td><td>Line 372, 324</td></tr>
+<tr><td><code>fme_start_o</code></td><td>S2–S7 (INTER only)</td><td>Yes (line 362)</td><td>1-cycle pulse</td><td>FME sub-block</td><td>Start fractional motion estimation</td><td>Line 373, 325</td></tr>
+<tr><td><code>rec_start_o</code></td><td>S3–S8</td><td>Yes (line 363)</td><td>1-cycle pulse</td><td>REC sub-block</td><td>Start reconstruction</td><td>Line 374</td></tr>
+<tr><td><code>db_start_o</code></td><td>S4–S9</td><td>Yes (line 364)</td><td>1-cycle pulse</td><td>DB/SAO sub-block</td><td>Start deblocking filter</td><td>Line 375</td></tr>
+<tr><td><code>ec_start_o</code></td><td>S5–SA</td><td>Yes (line 365)</td><td>1-cycle pulse</td><td>CABAC / EC sub-block</td><td>Start entropy coding</td><td>Line 376</td></tr>
+<tr><td><code>store_db_start_o</code></td><td>S5–SA</td><td>Yes (line 366)</td><td>1-cycle pulse</td><td>DB store logic</td><td>Store deblocked CTU to reference buffer</td><td>Line 377</td></tr>
+<tr><td><code>enc_start_o</code></td><td>Whenever enc_start_w==1</td><td>Yes (line 262)</td><td>1-cycle pulse</td><td>enc_core (all sub-blocks)</td><td>Global pipeline advance pulse</td><td>Line 262–268</td></tr>
+</table>
+
+<h3>6.2 enc_start_w — Pipeline Advance Pulse</h3>
+<pre>
+enc_start_w =
+  if cur_state == IDLE → sys_start_i       // frame start
+  else if cur_state == SA → 0              // frame end, no more advances
+  else → enc_done_r                        // advance when expected completions met
+</pre>
+<p>Evidence: Lines 252–260. This is combinational. <code>enc_start_o</code> is the registered version (line 262).</p>
+
+<h3>6.3 Fetch Enable Logic</h3>
+<p>Fetch enables are <strong>combinational</strong> and depend on <code>sys_type_i</code> (INTRA vs INTER):</p>
+
+<table>
+<tr><th>Fetch Signal</th><th>INTRA condition</th><th>INTER condition</th><th>Guard</th><th>Purpose</th><th>Evidence</th></tr>
+<tr><td><code>load_cur_luma_ena_o</code></td><td><code>pre_l_ena</code></td><td><code>pre_l_ena</code></td><td>—</td><td>Load current CTU luma for pre_l</td><td>Lines 333, 343</td></tr>
+<tr><td><code>load_ref_luma_ena_o</code></td><td>0</td><td><code>pre_l_ena</code></td><td>—</td><td>Load reference luma (INTER only, for IME)</td><td>Lines 334, 344</td></tr>
+<tr><td><code>load_cur_chroma_ena_o</code></td><td><code>stg_2_ena</code></td><td><code>stg_2_ena</code></td><td>—</td><td>Load current CTU chroma for stg_2</td><td>Lines 335, 345</td></tr>
+<tr><td><code>load_ref_chroma_ena_o</code></td><td>0</td><td><code>stg_2_ena</code></td><td>—</td><td>Load reference chroma (INTER only, for FME/MC)</td><td>Lines 336, 346</td></tr>
+<tr><td><code>load_db_luma_ena_o</code></td><td><code>rec_ena &amp; (rec_y_o!=0)</code></td><td><code>rec_ena &amp; (rec_y_o!=0)</code></td><td>y!=0 guard</td><td>Load top-row reconstructed luma for deblocking (skip row 0)</td><td>Lines 337, 347</td></tr>
+<tr><td><code>load_db_chroma_ena_o</code></td><td><code>rec_ena &amp; (rec_y_o!=0)</code></td><td><code>rec_ena &amp; (rec_y_o!=0)</code></td><td>y!=0 guard</td><td>Load top-row reconstructed chroma for deblocking (skip row 0)</td><td>Lines 338, 348</td></tr>
+<tr><td><code>store_db_luma_ena_o</code></td><td><code>store_db_ena &amp; (store_db_x_o!=0)</code></td><td><code>store_db_ena &amp; (store_db_x_o!=0)</code></td><td>x!=0 guard</td><td>Store deblocked luma (skip column 0 — leftmost CTU)</td><td>Lines 339, 349</td></tr>
+<tr><td><code>store_db_chroma_ena_o</code></td><td><code>store_db_ena &amp; (store_db_x_o!=0)</code></td><td><code>store_db_ena &amp; (store_db_x_o!=0)</code></td><td>x!=0 guard</td><td>Store deblocked chroma (skip column 0 — leftmost CTU)</td><td>Lines 340, 350</td></tr>
+</table>
+
+<p><strong>Important design note</strong> (from RTL comments, lines 339–350): There are three DB memories. The leftmost CTU output must be delayed, hence <code>store_db_x_o!=0</code> disables store for the first column. Similarly, <code>rec_y_o!=0</code> disables load for the first row (no top-neighbor exists).</p>
+
+<h3>6.4 sys_done_o</h3>
+<p><code>sys_done_o = (cur_state == SA) &amp;&amp; (nxt_state == IDLE)</code> — a one-cycle pulse at the exact moment the FSM returns to IDLE. Evidence: line 250.</p>
+
+<!-- ================================================================ -->
+<h2>7. Counter and Index Analysis</h2>
+<!-- ================================================================ -->
+
+<h3>7.1 CTU Position Counter (pre_l_x_o, pre_l_y_o)</h3>
+<table>
+<tr><th>Property</th><th>Value</th><th>Evidence</th></tr>
+<tr><td>Width</td><td>6 bits each (PIC_X_WIDTH, PIC_Y_WIDTH)</td><td>Lines 242–243, enc_defines.v:92–93</td></tr>
+<tr><td>Start value</td><td>(0, 0) — reset to 0 on IDLE</td><td>Lines 471–474</td></tr>
+<tr><td>Increment condition</td><td><code>enc_done_r == 1</code> (pipeline advances one CTU)</td><td>Line 475</td></tr>
+<tr><td>Increment pattern</td><td>x increments first; when x == sys_ctu_all_x_i, x wraps to 0 and y increments by 1</td><td>Lines 476–488</td></tr>
+<tr><td>Reset condition</td><td>async reset or cur_state == IDLE</td><td>Lines 467–474</td></tr>
+<tr><td>Terminal condition</td><td><code>pre_l_x == sys_ctu_all_x_i &amp;&amp; pre_l_y == sys_ctu_all_y_i</code> (last CTU)</td><td>Line 291</td></tr>
+<tr><td>Purpose</td><td>Tracks the current CTU being loaded (pre_l stage). Drives all downstream coordinate registers.</td><td>Lines 466–489</td></tr>
+</table>
+
+<p>This is a <strong>CTU raster-scan counter</strong>: left-to-right, top-to-bottom across the picture. The counter advance is gated by <code>enc_done_r</code>, meaning it only moves when the pipeline has processed one CTU.</p>
+
+<h3>7.2 Pipeline Coordinate Delay Registers</h3>
+<p>There are 8 pairs of x/y registers forming a <strong>shift register chain</strong> for CTU coordinates:</p>
+
+<table>
+<tr><th>Register Pair</th><th>Loaded From (on enc_done_r)</th><th>Evidence</th></tr>
+<tr><td><code>prei_x_o/y_o</code></td><td><code>pre_l_x_o/y_o</code></td><td>Lines 531–532 (INTRA), 549–550 (INTER)</td></tr>
+<tr><td><code>posi_x_o/y_o</code></td><td><code>prei_x_o/y_o</code></td><td>Lines 533–534 (INTRA), 551–552 (INTER)</td></tr>
+<tr><td><code>ime_x_o/y_o</code></td><td>0 (INTRA) / <code>pre_l_x_o/y_o</code> (INTER)</td><td>Lines 535–536 (INTRA), 553–554 (INTER)</td></tr>
+<tr><td><code>fme_x_o/y_o</code></td><td>0 (INTRA) / <code>ime_x_o/y_o</code> (INTER)</td><td>Lines 537–538 (INTRA), 555–556 (INTER)</td></tr>
+<tr><td><code>rec_x_o/y_o</code></td><td><code>posi_x_o/y_o</code> (INTRA) / <code>fme_x_o/y_o</code> (INTER)</td><td>Lines 539–540 (INTRA), 557–558 (INTER)</td></tr>
+<tr><td><code>db_x_o/y_o</code></td><td><code>rec_x_o/y_o</code></td><td>Lines 541–542 (INTRA), 559–560 (INTER)</td></tr>
+<tr><td><code>ec_x_o/y_o</code></td><td><code>db_x_o/y_o</code></td><td>Lines 543–544 (INTRA), 561–562 (INTER)</td></tr>
+<tr><td><code>store_db_x_o/y_o</code></td><td><code>db_x_o/y_o</code></td><td>Lines 545–546 (INTRA), 563–564 (INTER)</td></tr>
+</table>
+
+<p><strong>Key architectural insight:</strong> The coordinate registers form a pipeline that mirrors the processing pipeline. Each sub-block receives the CTU coordinate for the CTU it is currently processing, which is 1–7 stages behind <code>pre_l_x_o/y_o</code>. In INTER mode, IME and FME receive their coordinates from <code>pre_l</code> and <code>ime</code> respectively (rather than a simple shift chain), indicating a different data dependency structure.</p>
+
+<!-- ================================================================ -->
+<h2>8. Encoder Processing Sequence</h2>
+<!-- ================================================================ -->
+
+<h3>8.1 Complete Pipeline Timeline (INTER mode)</h3>
+<p>Numbers in the timeline represent CTU index (CTU 0, CTU 1, CTU 2, …). Each column is one <code>enc_done_r</code> cycle.</p>
+
+<table>
+<tr><th>Pipeline Stage</th><th>T0 (S0)</th><th>T1 (S1)</th><th>T2 (S2)</th><th>T3 (S3)</th><th>T4 (S4)</th><th>T5..Tn (S5)</th><th>Tn+1 (S6)</th><th>Tn+2 (S7)</th><th>Tn+3 (S8)</th><th>Tn+4 (S9)</th><th>Tn+5 (SA)</th></tr>
+<tr><td>pre_l (fetch cur+ref luma)</td><td>CTU0</td><td>CTU1</td><td>CTU2</td><td>CTU3</td><td>CTU4</td><td>CTU5…CTUn</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>stg1: IME</td><td>—</td><td>CTU0</td><td>CTU1</td><td>CTU2</td><td>CTU3</td><td>CTU4…CTUn-1</td><td>CTUn</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>stg1: PREI</td><td>—</td><td>CTU0</td><td>CTU1</td><td>CTU2</td><td>CTU3</td><td>CTU4…CTUn-1</td><td>CTUn</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>stg2: FME</td><td>—</td><td>—</td><td>CTU0</td><td>CTU1</td><td>CTU2</td><td>CTU3…CTUn-2</td><td>CTUn-1</td><td>CTUn</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>stg2: POSI</td><td>—</td><td>—</td><td>CTU0</td><td>CTU1</td><td>CTU2</td><td>CTU3…CTUn-2</td><td>CTUn-1</td><td>CTUn</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>REC</td><td>—</td><td>—</td><td>—</td><td>CTU0</td><td>CTU1</td><td>CTU2…CTUn-3</td><td>CTUn-2</td><td>CTUn-1</td><td>CTUn</td><td>—</td><td>—</td></tr>
+<tr><td>DB/SAO</td><td>—</td><td>—</td><td>—</td><td>—</td><td>CTU0</td><td>CTU1…CTUn-4</td><td>CTUn-3</td><td>CTUn-2</td><td>CTUn-1</td><td>CTUn</td><td>—</td></tr>
+<tr><td>EC (CABAC)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>CTU0…CTUn-5</td><td>CTUn-4</td><td>CTUn-3</td><td>CTUn-2</td><td>CTUn-1</td><td>CTUn</td></tr>
+<tr><td>Store DB</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>CTU0…CTUn-5</td><td>CTUn-4</td><td>CTUn-3</td><td>CTUn-2</td><td>CTUn-1</td><td>CTUn</td></tr>
+</table>
+
+<h3>8.2 INTRA Mode Differences</h3>
+<p>When <code>sys_type_i == INTRA</code> (lines 530–546):</p>
+<ul>
+<li>IME and FME are <strong>not started</strong> (ime_ena = 0, fme_ena = 0; lines 324–325).</li>
+<li><code>ime_x_o/y_o</code> and <code>fme_x_o/y_o</code> are forced to 0.</li>
+<li>Stage-1 completion = <code>prei_flg</code> only (no ime_flg needed; line 437).</li>
+<li>Stage-2 completion = <code>posi_flg</code> only (no fme_flg needed; line 438).</li>
+<li>Coordinate flow: pre_l → prei → posi → rec → db → ec → store_db (IME/FME stages skipped).</li>
+<li>Reference luma/chroma loads are disabled (lines 334, 336).</li>
+</ul>
+
+<h3>8.3 High-Level Sequence Description</h3>
+<ol style="margin-left:1.2rem;">
+<li><strong>IDLE:</strong> Wait for <code>sys_start_i</code>.</li>
+<li><strong>S0 (Ramp 1):</strong> Fetch first CTU luma. pre_l begins.</li>
+<li><strong>S1 (Ramp 2):</strong> PREI/IME start on CTU 0. Fetch CTU 1.</li>
+<li><strong>S2 (Ramp 3):</strong> POSI/FME start on CTU 0. PREI/IME on CTU 1. Fetch CTU 2.</li>
+<li><strong>S3 (Ramp 4):</strong> REC on CTU 0. Pipeline depth = 4.</li>
+<li><strong>S4 (Ramp 5):</strong> DB on CTU 0. Pipeline depth = 5.</li>
+<li><strong>S5 (Full / Steady state):</strong> EC and store_db join. All 7 stages active. Each cycle advances one CTU. Loop continues until last CTU.</li>
+<li><strong>S6–SA (Drain):</strong> Pipeline drains: pre_l off → stg1 off → stg2 off → rec off → DB off → EC+store_db finish.</li>
+<li><strong>IDLE:</strong> <code>sys_done_o</code> pulse emitted. Ready for next frame.</li>
+</ol>
+
+<!-- ================================================================ -->
+<h2>9. Control Dependency Graph</h2>
+<!-- ================================================================ -->
+
+<pre style="font-size:.78rem; line-height:1.45;">
+                     enc_ctrl
+                        │
+         ┌──────────────┼──────────────────┐
+         │              │                  │
+    ┌────▼────┐   ┌─────▼─────┐    ┌──────▼──────┐
+    │ fetch   │   │ enc_core  │    │ sys_done_o  │
+    │  top    │   │           │    │  (to top)   │
+    └────┬────┘   └─────┬─────┘    └─────────────┘
+         │              │
+         │    ┌─────────┼─────────────────────┐
+         │    │         │                     │
+    ┌────▼────▼───┐ ┌───▼────┐ ┌───┐ ┌───┐ ┌─▼──┐ ┌──▼──┐ ┌──▼──┐ ┌────┐
+    │ ena + x/y   │ │ PREI   │ │IME│ │POSI│ │FME │ │ REC │ │ DB  │ │ EC │
+    │ (8 enable   │ │start   │ │sta│ │sta │ │sta │ │start│ │start│ │star│
+    │  + 16 addr) │ │+x/y    │ │+x/│ │+x/y│ │+x/y│ │+x/y │ │+x/y │ │+x/y│
+    └─────────────┘ └───┬────┘ └─┬─┘ └──┬─┘ └──┬─┘ └──┬──┘ └──┬──┘ └──┬──┘
+                        │        │      │      │      │       │       │
+                    prei_done  ime_done posi_  fme_  rec_    db_     ec_
+                                            done  done  done   done    done
+                        │        │      │      │      │       │       │
+                        └────────┴──────┴──────┴──────┴───────┴───────┘
+                                         │
+                              All fed back as *_flg → enc_done_r
+</pre>
+
+<h3>Dependency details</h3>
+<table>
+<tr><th>Connection</th><th>Control Signal</th><th>Direction</th><th>Trigger</th><th>Completion</th></tr>
+<tr><td>enc_ctrl → fetch_top</td><td><code>load_*_ena_o, load/store_*_x/y_o</code></td><td>ctrl → fetch</td><td>pre_l_ena, rec_ena, store_db_ena (combinational)</td><td><code>fetch_done_i</code></td></tr>
+<tr><td>enc_ctrl → PREI</td><td><code>prei_start_o, prei_x_o, prei_y_o</code></td><td>ctrl → PREI</td><td>prei_start_o pulse (on enc_start_o)</td><td><code>prei_done_i</code></td></tr>
+<tr><td>enc_ctrl → IME</td><td><code>ime_start_o, ime_x_o, ime_y_o</code></td><td>ctrl → IME</td><td>ime_start_o pulse (INTER only)</td><td><code>ime_done_i</code></td></tr>
+<tr><td>enc_ctrl → POSI</td><td><code>posi_start_o, posi_x_o, posi_y_o</code></td><td>ctrl → POSI</td><td>posi_start_o pulse</td><td><code>posi_done_i</code></td></tr>
+<tr><td>enc_ctrl → FME</td><td><code>fme_start_o, fme_x_o, fme_y_o</code></td><td>ctrl → FME</td><td>fme_start_o pulse (INTER only)</td><td><code>fme_done_i</code></td></tr>
+<tr><td>enc_ctrl → REC</td><td><code>rec_start_o, rec_x_o, rec_y_o</code></td><td>ctrl → REC</td><td>rec_start_o pulse</td><td><code>rec_done_i</code></td></tr>
+<tr><td>enc_ctrl → DB/SAO</td><td><code>db_start_o, db_x_o, db_y_o</code></td><td>ctrl → DB</td><td>db_start_o pulse</td><td><code>db_done_i</code></td></tr>
+<tr><td>enc_ctrl → EC/CABAC</td><td><code>ec_start_o, ec_x_o, ec_y_o</code></td><td>ctrl → EC</td><td>ec_start_o pulse</td><td><code>ec_done_i</code></td></tr>
+<tr><td>enc_ctrl → store_db</td><td><code>store_db_start_o, store_db_x_o, store_db_y_o</code></td><td>ctrl → store_db</td><td>store_db_start_o pulse</td><td>— (no separate done; implied by ec_done)</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>10. Handshake Analysis</h2>
+<!-- ================================================================ -->
+
+<p>The controller uses a <strong>start-pulse / sticky-done-flag / registered-combined-done</strong> handshake mechanism. This is <em>not</em> a standard ready/valid protocol.</p>
+
+<h3>10.1 Handshake Mechanism</h3>
+<table>
+<tr><th>Phase</th><th>Signal</th><th>Description</th><th>Evidence</th></tr>
+<tr><td>Request</td><td><code>xxx_start_o</code></td><td>1-cycle pulse registered from enable bits on enc_start_o rising edge</td><td>Lines 356–390</td></tr>
+<tr><td>Acknowledgement</td><td><code>xxx_done_i</code></td><td>Pulse from sub-block when its CTU processing is complete</td><td>Lines 147–154</td></tr>
+<tr><td>Sticky flag</td><td><code>xxx_flg</code></td><td>Latched on done_i; stays high until enc_done_r or IDLE clears it (lines 426–434)</td><td>Lines 394–434</td></tr>
+<tr><td>Combined done</td><td><code>enc_done_r</code></td><td>Registered pulse when expected flag pattern matches for current state (lines 442–462)</td><td>Lines 442–462</td></tr>
+<tr><td>Pipeline advance</td><td><code>enc_start_w</code></td><td>Combinational: = enc_done_r (except IDLE/SA); latched as enc_start_o next cycle</td><td>Lines 252–260</td></tr>
+</table>
+
+<h3>10.2 Handshake Sequence (per CTU)</h3>
+<pre>
+Cycle 0:  enc_start_o rises  →  all xxx_start_o for active stages pulse
+Cycle 1:  enc_start_o falls  →  all xxx_start_o clear (sub-blocks now processing)
+          ... sub-blocks work independently ...
+Cycle N:  xxx_done_i pulses  →  xxx_flg latches high
+          ... other sub-blocks finish ...
+Cycle M:  All expected flags for cur_state are set
+          → enc_done_r pulses (registered)
+          → Coordinate registers advance
+          → enc_start_w rises → enc_start_o rises next cycle → new CTU starts
+          → All flags clear (enc_done_r, line 415)
+</pre>
+
+<h3>10.3 Flag Clearing</h3>
+<p>All 8 flags are cleared simultaneously on either:</p>
+<ul>
+<li><code>cur_state == IDLE</code> (lines 405–413)</li>
+<li><code>enc_done_r == 1</code> (lines 415–424)</li>
+</ul>
+<p>This ensures each pipeline step starts with a clean slate for the next CTU.</p>
+
+<!-- ================================================================ -->
+<h2>11. Cycle-Level Behavior</h2>
+<!-- ================================================================ -->
+
+<h3>11.1 Pipeline Ramp-Up Timing</h3>
+<table>
+<tr><th>Cycle</th><th>FSM State</th><th>enc_start_o</th><th>Active Enables</th><th>External Event</th><th>Next State</th></tr>
+<tr><td>0</td><td>IDLE</td><td>0</td><td>—</td><td><code>sys_start_i</code> rises</td><td>S0</td></tr>
+<tr><td>1</td><td>S0</td><td>1 (from sys_start_i)</td><td>pre_l</td><td>pre_l_start_o pulses → fetch loads CTU 0 luma</td><td>S0 (wait for fetch_done)</td></tr>
+<tr><td>1+N₀</td><td>S0</td><td>1 (from fetch_flg → enc_done_r)</td><td>pre_l</td><td>fetch_done_i sets fetch_flg → enc_done_r</td><td>S1</td></tr>
+<tr><td>1+N₀+1</td><td>S1</td><td>1</td><td>pre_l + stg1</td><td>prei/ime_start_o pulse on CTU 0; pre_l loads CTU 1</td><td>S1 (wait for fetch+stg1 done)</td></tr>
+<tr><td>1+N₀+1+N₁</td><td>S1</td><td>1</td><td>pre_l + stg1</td><td>fetch_flg &amp; stg_1_flg both set → enc_done_r</td><td>S2</td></tr>
+</table>
+<p><strong>Note:</strong> Exact cycle counts N₀, N₁, etc. depend on the latency of each sub-block and cannot be determined from <code>enc_ctrl.v</code> alone.</p>
+
+<h3>11.2 Steady-State Timing (S5)</h3>
+<table>
+<tr><th>Cycle</th><th>FSM State</th><th>enc_start_o</th><th>Active Enables</th><th>Event</th><th>Next State</th></tr>
+<tr><td>T</td><td>S5</td><td>1</td><td>All 7</td><td>enc_done_r fires (all 6 flags = 6'b1_111_11); coord regs advance</td><td>S5 (if not last CTU)</td></tr>
+<tr><td>T+1</td><td>S5</td><td>1</td><td>All 7</td><td>New start pulses; previous CTU's flags cleared</td><td>S5</td></tr>
+<tr><td>T+K</td><td>S5</td><td>1</td><td>All 7</td><td>Last CTU detected (pre_l_x/y == ctu_all_x/y)</td><td>S6</td></tr>
+</table>
+<p>Latency per CTU in steady state: variable, depends on sub-block completion time. Cannot be determined from enc_ctrl.v alone.</p>
+
+<h3>11.3 Pipeline Drain Timing</h3>
+<p>After S5 transitions to S6, the drain phase takes exactly <strong>5 additional enc_done_r pulses</strong> (S6→S7→S8→S9→SA→IDLE), with each pulse waiting for the corresponding expected flag pattern.</p>
+<p>Drain latency for each stage depends on how long the sub-block takes to finish and cannot be determined from enc_ctrl.v alone.</p>
+
+<!-- ================================================================ -->
+<h2>12. Microarchitecture Reconstruction</h2>
+<!-- ================================================================ -->
+
+<h3>12.1 Control Path</h3>
+<ul>
+<li><strong>FSM:</strong> 12-state sequential controller. State register: <code>cur_state</code> [3:0]. Asynchronous active-low reset to IDLE.</li>
+<li><strong>Next-state logic:</strong> Purely combinational (lines 281–299). Depends on <code>cur_state</code>, <code>enc_start_w</code> (= <code>enc_done_r</code>), <code>sys_start_i</code>, and CTU position comparison.</li>
+<li><strong>Enable generation:</strong> Combinational decode of <code>cur_state</code> into 7-bit enable vector (lines 304–322).</li>
+<li><strong>Start generation:</strong> All start outputs are registered from enable bits, gated by <code>enc_start_o</code> (lines 356–390). This creates a one-cycle pulse delay after enable assertion.</li>
+<li><strong>Done detection:</strong> Sticky flags accumulate done_i pulses. Combined flags checked per-state for expected pattern. Registered pulse generated as <code>enc_done_r</code> (lines 442–462).</li>
+<li><strong>No arbitration:</strong> The controller is purely sequential — one CTU at a time, no resource contention management.</li>
+</ul>
+
+<h3>12.2 Datapath Interaction</h3>
+<ul>
+<li><strong>enc_ctrl does NOT process data.</strong> It only generates control signals (start, coordinates, enables) and monitors completion signals.</li>
+<li><strong>Coordinate cascade:</strong> 8 pairs of registered x/y values form a pipeline delay chain, ensuring each sub-block receives the coordinate of the CTU it should be processing.</li>
+<li><strong>INTRA vs INTER switching:</strong> Single mux on <code>sys_type_i</code> controls:
+  <ul>
+    <li>Whether IME/FME are activated (lines 324–325)</li>
+    <li>How stage completion flags are combined (lines 437–438)</li>
+    <li>How coordinates cascade through the pipeline (lines 530–566)</li>
+    <li>Which fetch enables are asserted (lines 332–351)</li>
+  </ul>
+</li>
+</ul>
+
+<h3>12.3 Memory Interaction</h3>
+<ul>
+<li><strong>enc_ctrl drives fetch enables and addresses</strong> but does not directly control any memory.</li>
+<li><strong>Fetch enable guards:</strong>
+  <ul>
+    <li><code>load_db_*_ena</code> suppressed when <code>rec_y_o == 0</code> (first row, no top neighbor).</li>
+    <li><code>store_db_*_ena</code> suppressed when <code>store_db_x_o == 0</code> (first column, leftmost CTU delayed by 3 DB memories).</li>
+  </ul>
+</li>
+<li>These guards are implemented as combinational conditions on the enable outputs (lines 337–340, 347–350).</li>
+</ul>
+
+<h3>12.4 Pipeline Interaction</h3>
+<ul>
+<li><strong>enc_ctrl implements a linear pipeline controller.</strong> It is NOT a general-purpose pipeline — it is a fixed 7-stage pipeline where each stage corresponds to a specific sub-block.</li>
+<li><strong>No overlap between CTUs within a stage:</strong> Each sub-block receives exactly one start pulse per CTU. The next CTU's start pulse only arrives after the current CTU's done flag is latched.</li>
+<li><strong>Full overlap across stages:</strong> Up to 7 CTUs are in flight simultaneously (one per pipeline stage) once the pipeline is full.</li>
+<li><strong>No backpressure:</strong> The controller waits for all expected completions before advancing; there is no mechanism for a sub-block to signal "busy" or "not ready."</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2>13. Global Encoder Control Flow</h2>
+<!-- ================================================================ -->
+
+<h3>13.1 Position in xk265 hierarchy</h3>
+<pre>
+h265enc_top
+├── enc_ctrl                  ← THIS MODULE
+│   Outputs to:
+│   ├── fetch_top             ← ena, x, y (8 enable + 16 address signals)
+│   ├── enc_core              ← start pulses + CTU coordinates for each sub-block
+│   │   ├── prei_start_o      → PREI
+│   │   ├── posi_start_o      → POSI
+│   │   ├── ime_start_o       → IME
+│   │   ├── fme_start_o       → FME
+│   │   ├── rec_start_o       → REC
+│   │   ├── db_start_o        → DB/SAO
+│   │   ├── ec_start_o        → EC/CABAC
+│   │   └── store_db_start_o  → store_db
+│   └── sys_done_o            → top-level frame done
+│
+│   Inputs from:
+│   ├── h265enc_top           ← sys_start_i, sys_type_i, sys_ctu_all_x/y_i
+│   ├── fetch_top             ← fetch_done_i
+│   └── enc_core              ← prei/posi/ime/fme/rec/db/ec_done_i
+</pre>
+
+<h3>13.2 Direct connections (verified from RTL)</h3>
+<table>
+<tr><th>From</th><th>To</th><th>Signals</th><th>Evidence</th></tr>
+<tr><td>h265enc_top</td><td>enc_ctrl</td><td>sys_start_i, sys_type_i, sys_ctu_all_x/y_i</td><td>Lines 39–42</td></tr>
+<tr><td>enc_ctrl</td><td>fetch_top</td><td>load/store_*_ena_o, load/store_*_x/y_o</td><td>Lines 86–207</td></tr>
+<tr><td>enc_ctrl</td><td>enc_core (PREI)</td><td>prei_start_o, prei_x_o, prei_y_o</td><td>Lines 58–59, 69–70</td></tr>
+<tr><td>enc_ctrl</td><td>enc_core (IME)</td><td>ime_start_o, ime_x_o, ime_y_o</td><td>Lines 60, 73–74</td></tr>
+<tr><td>enc_ctrl</td><td>enc_core (POSI)</td><td>posi_start_o, posi_x_o, posi_y_o</td><td>Lines 59, 71–72</td></tr>
+<tr><td>enc_ctrl</td><td>enc_core (FME)</td><td>fme_start_o, fme_x_o, fme_y_o</td><td>Lines 61, 75–76</td></tr>
+<tr><td>enc_ctrl</td><td>enc_core (REC)</td><td>rec_start_o, rec_x_o, rec_y_o</td><td>Lines 62, 77–78</td></tr>
+<tr><td>enc_ctrl</td><td>enc_core (DB)</td><td>db_start_o, db_x_o, db_y_o</td><td>Lines 63, 79–80</td></tr>
+<tr><td>enc_ctrl</td><td>enc_core (EC)</td><td>ec_start_o, ec_x_o, ec_y_o</td><td>Lines 64, 81–82</td></tr>
+<tr><td>enc_ctrl</td><td>enc_core (store_db)</td><td>store_db_start_o, store_db_x_o, store_db_y_o</td><td>Lines 65, 83–84</td></tr>
+<tr><td>fetch_top</td><td>enc_ctrl</td><td>fetch_done_i</td><td>Line 47</td></tr>
+<tr><td>enc_core sub-blocks</td><td>enc_ctrl</td><td>prei/posi/ime/fme/rec/db/ec_done_i</td><td>Lines 48–54</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>14. Processing Granularity</h2>
+<!-- ================================================================ -->
+
+<h3>14.1 Processing granularity of enc_ctrl</h3>
+<table>
+<tr><th>Level</th><td>Controlled by enc_ctrl?</td><th>Evidence</th></tr>
+<tr><td>Frame level</td><td>Yes — sys_start_i / sys_done_o</td><td>Lines 39, 43, 250</td></tr>
+<tr><td>Slice type</td><td>Yes — sys_type_i (INTRA/INTER)</td><td>Line 40, 129–130</td></tr>
+<tr><td>CTU level</td><td>Yes — x/y coordinates, raster-scan progression</td><td>Lines 466–489</td></tr>
+<tr><td>CU level</td><td>No — not visible in enc_ctrl.v</td><td>—</td></tr>
+<tr><td>PU level</td><td>No — not visible in enc_ctrl.v</td><td>—</td></tr>
+<tr><td>TU level</td><td>No — not visible in enc_ctrl.v</td><td>—</td></tr>
+</table>
+
+<p><strong>enc_ctrl operates at CTU granularity.</strong> It advances one CTU per pipeline step. CU/PU/TU-level decisions are made internally by the sub-blocks (PREI, POSI, IME, FME, REC, DB, EC), not by enc_ctrl.</p>
+
+<h3>14.2 CTU addressing</h3>
+<ul>
+<li>CTU x: 0 to <code>sys_ctu_all_x_i</code> (max 63, from 6-bit PIC_X_WIDTH)</li>
+<li>CTU y: 0 to <code>sys_ctu_all_y_i</code> (max 63, from 6-bit PIC_Y_WIDTH)</li>
+<li>Raster scan: x increments first (left to right), then y increments (top to bottom)</li>
+<li>Total CTUs per frame: <code>(sys_ctu_all_x_i+1) × (sys_ctu_all_y_i+1)</code></li>
+</ul>
+
+<!-- ================================================================ -->
+<h2>15. Design Characteristics</h2>
+<!-- ================================================================ -->
+
+<table>
+<tr><th>Characteristic</th><th>Value</th><th>Evidence</th></tr>
+<tr><td>Control style</td><td>Centralized, FSM-driven</td><td>Single FSM (cur_state) controls all sub-blocks</td></tr>
+<tr><td>Pipeline type</td><td>Fixed linear pipeline with ramp-up/drain</td><td>Enable vector progression S0→S5→SA</td></tr>
+<tr><td>Pipeline depth</td><td>7 stages (pre_l, stg1, stg2, rec, db, ec, store_db)</td><td>7-bit enable vector, lines 305</td></tr>
+<tr><td>Parallelism</td><td>Up to 7 CTUs in flight simultaneously</td><td>Full enable vector in S5</td></tr>
+<tr><td>Scheduling</td><td>Strictly sequential CTU order (raster scan)</td><td>pre_l_x/y counter, lines 466–489</td></tr>
+<tr><td>Backpressure</td><td>None — controller waits for all completions before advancing</td><td>enc_done_r gated by flag pattern</td></tr>
+<tr><td>Resource sharing</td><td>Not managed by enc_ctrl — each sub-block has its own start/done</td><td>Separate start/done signals per sub-block</td></tr>
+<tr><td>Mode switching</td><td>Per-frame (sys_type_i), not per-CTU</td><td>sys_type_i checked combinationally, not registered per-CTU</td></tr>
+<tr><td>Frame-level sequencing</td><td>Full pipeline drain between frames</td><td>S6–SA drain, then IDLE before next sys_start_i</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>16. Potential Bottlenecks</h2>
+<!-- ================================================================ -->
+
+<ol style="margin-left:1.2rem;">
+<li><strong>Ramp-up latency:</strong> 5 cycles of pipeline fill before all stages are active. For small pictures this is significant relative to total processing time. <span class="tag tag-inferred">INFERRED from S0–S4 enable progression</span></li>
+<li><strong>Drain latency:</strong> 5 cycles to fully drain the pipeline after the last CTU. <span class="tag tag-inferred">INFERRED from S6–SA enable regression</span></li>
+<li><strong>No inter-frame overlap:</strong> The next frame cannot start until the current frame is fully drained (S6→SA→IDLE→sys_start_i). <span class="tag tag-verified">VERIFIED from lines 250, 297</span></li>
+<li><strong>No CTU-level parallelism within a sub-block:</strong> Each sub-block processes one CTU at a time; the controller does not support multiple CTUs in the same stage. <span class="tag tag-inferred">INFERRED from single start pulse per stage per CTU</span></li>
+<li><strong>Store_db column-0 suppression:</strong> The leftmost CTU in each row cannot store DB results, introducing a 1-CTU bubble at each row boundary. <span class="tag tag-verified">VERIFIED from lines 339–340, 349–350</span></li>
+<li><strong>Load_db row-0 suppression:</strong> The topmost CTU row cannot load DB reference data, potentially stalling the DB stage. <span class="tag tag-verified">VERIFIED from lines 337–338, 347–348</span></li>
+</ol>
+
+<!-- ================================================================ -->
+<h2>17. Questions Requiring Other RTL</h2>
+<!-- ================================================================ -->
+
+<table>
+<tr><th>Question</th><th>Why enc_ctrl.v cannot answer it</th><th>File to inspect next</th></tr>
+<tr><td>What is the exact latency of each sub-block (PREI, IME, POSI, FME, REC, DB, EC)?</td><td>Only done_i is observed; internal pipeline depth unknown</td><td>Each sub-block's top module</td></tr>
+<tr><td>How does fetch_top handle multiple simultaneous load requests?</td><td>enc_ctrl only drives enables; fetch arbitration is internal</td><td>fetch_top.v</td></tr>
+<tr><td>What does store_db_start_o trigger internally?</td><td>No done signal exists for store_db; completion mechanism unknown</td><td>enc_core or DB-related RTL</td></tr>
+<tr><td>How are CU/PU/TU partitions handled within a CTU?</td><td>enc_ctrl operates at CTU level only</td><td>PREI, POSI, IME, FME, REC internals</td></tr>
+<tr><td>What data widths flow through the pipeline between sub-blocks?</td><td>enc_ctrl only drives coordinates and control, not data</td><td>enc_core sub-block interfaces</td></tr>
+<tr><td>How does inter-frame reference buffer management work?</td><td>enc_ctrl does not control DPB or reference list</td><td>h265enc_top, DPB-related RTL</td></tr>
+<tr><td>What is the pipeline stage correspondence between IME/FME and PREI/POSI?</td><td>stg_1_ena drives both IME and PREI simultaneously; how they share the CTU is unclear from enc_ctrl alone</td><td>enc_core.v, IME, PREI internals</td></tr>
+<tr><td>Does the encoder support frame-level INTRA/INTER switching mid-sequence?</td><td>sys_type_i is checked combinationally; it is not clear if it can change per-frame without a reset</td><td>h265enc_top.v, enc_ctrl integration</td></tr>
+<tr><td>What is the exact behavior when all sub-blocks do not complete in the same cycle?</td><td>enc_done_r requires all expected flags; variable completion order is handled but exact timing unknown</td><td>Simulation with sub-block models</td></tr>
+<tr><td>How is the bitstream output (from EC) collected and buffered?</td><td>enc_ctrl has no visibility into bitstream output</td><td>CABAC/EC internals, top-level output logic</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>18. Evidence / Traceability</h2>
+<!-- ================================================================ -->
+
+<h3>Key RTL evidence references</h3>
+<table>
+<tr><th>Claim</th><th>RTL Evidence</th><th>Line(s)</th></tr>
+<tr><td>FSM has 12 states</td><td>localparam IDLE=0, S0=1…SA=11</td><td>116–127</td></tr>
+<tr><td>Reset state is IDLE</td><td><code>cur_state <= IDLE</code> on reset</td><td>274</td></tr>
+<tr><td>sys_done_o = SA→IDLE transition</td><td><code>sys_done_o = cur_state==SA && nxt_state==IDLE</code></td><td>250</td></tr>
+<tr><td>enc_start_w = sys_start_i in IDLE</td><td><code>if(cur_state==IDLE) enc_start_w = sys_start_i</code></td><td>253–254</td></tr>
+<tr><td>enc_start_w = enc_done_r in active states</td><td><code>else enc_start_w = enc_done_r</code></td><td>258</td></tr>
+<tr><td>Enable vector progression (ramp-up)</td><td>case statement lines 307–318</td><td>307–321</td></tr>
+<tr><td>IME/FME disabled in INTRA mode</td><td><code>ime_ena = (sys_type_i==INTER) ? stg_1_ena : 0</code></td><td>324–325</td></tr>
+<tr><td>Pipeline stage completion flags combined</td><td><code>stg_1_flg = (sys_type_i==INTRA) ? prei_flg : (prei_flg && ime_flg)</code></td><td>437–438</td></tr>
+<tr><td>Sticky flag accumulation</td><td><code>fetch_flg <= fetch_done_i | fetch_flg</code></td><td>426</td></tr>
+<tr><td>Flag clearing on enc_done_r</td><td><code>else if(enc_done_r) fetch_flg <= 0</code></td><td>415–424</td></tr>
+<tr><td>enc_done_r per-state expected patterns</td><td>case statement lines 448–460</td><td>448–460</td></tr>
+<tr><td>CTU raster-scan counter</td><td>pre_l_x_o/y_o increment logic</td><td>466–489</td></tr>
+<tr><td>Last CTU detection (S5→S6)</td><td><code>pre_l_x_o==sys_ctu_all_x_i && pre_l_y_o==sys_ctu_all_y_i</code></td><td>291</td></tr>
+<tr><td>Coordinate cascade: prei ← pre_l</td><td><code>prei_x_o <= pre_l_x_o</code></td><td>531, 549</td></tr>
+<tr><td>Coordinate cascade: ime ← pre_l (INTER)</td><td><code>ime_x_o <= pre_l_x_o</code></td><td>553</td></tr>
+<tr><td>Coordinate cascade: fme ← ime (INTER)</td><td><code>fme_x_o <= ime_x_o</code></td><td>555</td></tr>
+<tr><td>Coordinate cascade: rec ← fme (INTER)</td><td><code>rec_x_o <= fme_x_o</code></td><td>557</td></tr>
+<tr><td>load_db suppressed at y=0</td><td><code>load_db_luma_ena_o = rec_ena & (rec_y_o!=0)</code></td><td>337, 347</td></tr>
+<tr><td>store_db suppressed at x=0</td><td><code>store_db_luma_ena_o = store_db_ena & (store_db_x_o!=0)</code></td><td>339, 349</td></tr>
+<tr><td>Start outputs registered on enc_start_o</td><td><code>else if(enc_start_o) prei_start_o <= prei_ena</code></td><td>368–378</td></tr>
+<tr><td>PIC_X_WIDTH = 6, PIC_Y_WIDTH = 6</td><td>enc_defines.v</td><td>92–93</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>19. Final Microarchitecture Summary</h2>
+<!-- ================================================================ -->
+
+<h3>A. Controller Role</h3>
+<p><code>enc_ctrl</code> is the <strong>central pipeline sequencer and CTU progress controller</strong> for the xk265 HEVC encoder. It does not process data. It sequences sub-block execution through a 7-stage fixed pipeline, advances CTU coordinates, and manages frame-level start/done handshakes with the top level.</p>
+
+<h3>B. FSM</h3>
+<p><strong>12 states:</strong> IDLE → S0 → S1 → S2 → S3 → S4 → S5 (loop) → S6 → S7 → S8 → S9 → SA → IDLE.</p>
+<ul>
+<li><strong>S0–S4:</strong> Ramp-up — progressively enabling pipeline stages.</li>
+<li><strong>S5:</strong> Steady state — all 7 stages active, loop over all CTUs.</li>
+<li><strong>S6–SA:</strong> Drain — progressively disabling pipeline stages.</li>
+</ul>
+
+<h3>C. Control Flow</h3>
+<ol>
+<li>Wait for <code>sys_start_i</code> in IDLE.</li>
+<li>Ramp up: enable one additional pipeline stage per state (S0→S5).</li>
+<li>At S5, loop: for each CTU, wait for all expected completions → advance → repeat.</li>
+<li>On last CTU, drain: S5→S6→…→SA→IDLE.</li>
+<li>Pulse <code>sys_done_o</code>.</li>
+</ol>
+
+<h3>D. Datapath Interaction</h3>
+<p>enc_ctrl drives 8 start pulses, 8 pairs of CTU coordinates, and 8 fetch enable+address signals to downstream sub-blocks. It monitors 8 done signals and uses sticky flags + pattern matching to determine when to advance the pipeline. It does not touch pixel data, coefficients, or bitstream bits.</p>
+
+<h3>E. Timing</h3>
+<ul>
+<li>Ramp-up: 5 state transitions (S0–S4) before pipeline is full.</li>
+<li>Steady-state: 1 CTU per enc_done_r pulse (latency depends on sub-blocks).</li>
+<li>Drain: 5 state transitions (S6–SA) after last CTU.</li>
+<li>Exact per-CTU latency: UNKNOWN from enc_ctrl.v alone.</li>
+</ul>
+
+<h3>F. Bottlenecks</h3>
+<ul>
+<li>5-cycle ramp-up + 5-cycle drain overhead per frame.</li>
+<li>No inter-frame pipelining (must fully drain before next frame).</li>
+<li>store_db column-0 suppression: 1-CTU stall per row.</li>
+<li>load_db row-0 suppression: potential stall for top-row CTUs.</li>
+</ul>
+
+<h3>G. Unknowns</h3>
+<ul>
+<li>Exact sub-block latencies (all 8 sub-blocks).</li>
+<li>Internal sub-block handshakes and data widths.</li>
+<li>CU/PU/TU partitioning within each CTU (handled inside sub-blocks).</li>
+<li>Bitstream output collection and buffering.</li>
+<li>Reference buffer (DPB) management.</li>
+<li>Whether sys_type_i can vary per-frame or is fixed for entire encode.</li>
+<li>Behavior when done_i pulses arrive out-of-order or with variable latency across sub-blocks.</li>
+</ul>
+
+</div><!-- .container -->
+</body>
+</html>

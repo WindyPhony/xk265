@@ -1,0 +1,20 @@
+flowchart LR
+C["cnt[5:0]<br/>shared counter output"] --> E2["== 6'd2"]
+  C --> E10["== 6'd10"]
+  DATA["md_data_i[255:0]"] --> RDATA["rdata[255:0]<br/>wire alias"]
+  RDATA -->|1| HM[/"MUX"\]
+  RDATA -->|1| LM[/"MUX"\]
+  E2 -.->|S| HM
+  E10 -.->|S| LM
+  H["rf_512bit[511:256]<br/>256-bit DFF bank / reset = 0"] -->|"0: hold"| HM
+  L["rf_512bit[255:0]<br/>256-bit DFF bank / reset = 0"] -->|"0: hold"| LM
+  HM -->|D| H
+  LM -->|D| L
+  H -->|"bits 511:256"| PACK["Concatenate {upper, lower}<br/>wiring only"]
+  L -->|"bits 255:0"| PACK
+  PACK --> O(["rf_512bit[511:0]"])
+  CLK["clk"] -.->|posedge| H
+  CLK -.->|posedge| L
+  RST["rstn"] -.->|"async active-low reset"| H
+  RST -.->|"async active-low reset"| L
+  classDef default fill:#fff,stroke:#555,color:#111;

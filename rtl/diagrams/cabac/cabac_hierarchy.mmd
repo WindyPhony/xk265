@@ -1,0 +1,60 @@
+%%{ init: { "theme": "default", "themeVariables": { "fontSize": "14px" } } }%%
+graph TD
+    cabac_top["<b>cabac_top</b><br/>cabac_top.v<br/><i>Top Module</i>"]
+
+    cabac_se_prepare["<b>cabac_se_prepare</b><br/>cabac_se_prepare.v<br/><i>SE Generation FSM</i>"]
+    cabac_bina["<b>cabac_bina</b><br/>cabac_bina.v<br/><i>4-Way Binarization</i>"]
+    cabac_binsort["<b>cabac_binsort</b><br/>cabac_binsort.v<br/><i>Bin Sort 50-entry FIFO</i>"]
+    cabac_pipo["<b>cabac_pipo</b><br/>pipo.v<br/><i>PIPO 8-entry FIFO</i>"]
+    cabac_ucontext["<b>cabac_ucontext</b><br/>cabac_ucontext.v<br/><i>Context Modeling 188-Entry Table</i>"]
+    cabac_rlps4["<b>cabac_rlps4</b><br/>cabac_rlps4.v<br/><i>4-Way RLPS Lookup</i>"]
+    cabac_urange4["<b>cabac_urange4</b><br/>cabac_urange4.v<br/><i>4-Way Range Update</i>"]
+    cabac_binmix["<b>cabac_binmix</b><br/>cabac_binmix.v<br/><i>Regular/Bypass Bin Mix</i>"]
+    cabac_ulow["<b>cabac_ulow</b><br/>cabac_ulow.v<br/><i>5-Cascade Low Update</i>"]
+    cabac_ulow_refine["<b>cabac_ulow_refine</b><br/>cabac_ulow_refine.v<br/><i>Carry Propagation</i>"]
+    cabac_bitpack["<b>cabac_bitpack</b><br/>cabac_bitpack.v<br/><i>128-bit Bit Pack</i>"]
+    coe_addr_trans["<b>coe_addr_trans</b><br/>coe_addr_trans.v<br/><i>Coeff Addr Trans</i>"]
+
+    cabac_top --> cabac_se_prepare
+    cabac_top --> cabac_pipo
+    cabac_top --> cabac_bina
+    cabac_top --> cabac_binsort
+    cabac_top --> cabac_ucontext
+    cabac_top --> cabac_rlps4
+    cabac_top --> cabac_urange4
+    cabac_top --> cabac_binmix
+    cabac_top --> cabac_ulow
+    cabac_top --> cabac_ulow_refine
+    cabac_top --> cabac_bitpack
+    cabac_top --> coe_addr_trans
+
+    cabac_ucontext --> cabac_ucontext_t["<b>cabac_ucontext_t ×7</b><br/>cabac_ucontext_t.v<br/><i>Single Context Update</i>"]
+    cabac_ucontext --> cabac_ucontext_tt["<b>cabac_ucontext_tt ×3</b><br/>cabac_ucontext_tt.v<br/><i>Double Context Update</i>"]
+
+    cabac_bina --> cabac_bina_lut["<b>cabac_bina_lut ×4</b><br/>cabac_bina_lut.v<br/><i>Type Lookup</i>"]
+
+    cabac_rlps4 --> cabac_rlps4_1bin["<b>cabac_rlps4_1bin ×4</b><br/>cabac_rlps4_1bin.v<br/><i>RLPS Table 64-entry</i>"]
+
+    cabac_urange4 --> cabac_urange4_full["<b>cabac_urange4_full ×4</b><br/>cabac_urange4_full.v<br/><i>Range Update + Renorm</i>"]
+
+    cabac_ulow --> cabac_ulow_1bin["<b>cabac_ulow_1bin ×5</b><br/>cabac_ulow_1bin.v<br/><i>Single Low Update</i>"]
+
+    style cabac_top fill:#1a73e8,color:#fff,stroke:#1557b0,stroke-width:2px
+    style cabac_se_prepare fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:2px
+    style cabac_pipo fill:#f9ab00,color:#000,stroke:#e09800,stroke-width:2px
+    style cabac_bina fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style cabac_binsort fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style cabac_ucontext fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:2px
+    style cabac_rlps4 fill:#fbbc04,color:#000,stroke:#e0a800,stroke-width:2px
+    style cabac_urange4 fill:#fbbc04,color:#000,stroke:#e0a800,stroke-width:2px
+    style cabac_binmix fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style cabac_ulow fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style cabac_ulow_refine fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style cabac_bitpack fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:2px
+    style coe_addr_trans fill:#34a853,color:#fff,stroke:#2d8e47,stroke-width:2px
+    style cabac_ucontext_t fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:1px
+    style cabac_ucontext_tt fill:#4285f4,color:#fff,stroke:#3b78e0,stroke-width:1px
+    style cabac_bina_lut fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:1px
+    style cabac_rlps4_1bin fill:#fbbc04,color:#000,stroke:#e0a800,stroke-width:1px
+    style cabac_urange4_full fill:#fbbc04,color:#000,stroke:#e0a800,stroke-width:1px
+    style cabac_ulow_1bin fill:#ea4335,color:#fff,stroke:#d33426,stroke-width:1px
